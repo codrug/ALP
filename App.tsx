@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Shield, 
   RefreshCcw, 
@@ -15,12 +14,21 @@ import {
   Menu,
   Play
 } from 'lucide-react';
+import { AuthPage } from './src/AuthPage';
+import { auth } from './src/firebase';
 
 // --- Header Component ---
-const Header: React.FC = () => (
+interface HeaderProps {
+  onLoginClick: () => void;
+  onSignupClick: () => void;
+  userEmail: string | null;
+  onLogout: () => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ onLoginClick, onSignupClick, userEmail, onLogout }) => (
   <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-black/80 backdrop-blur-md">
     <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 cursor-pointer" onClick={() => window.location.reload()}>
         <div className="w-8 h-8 bg-amber-500 flex items-center justify-center rounded-sm">
           <Shield className="w-5 h-5 text-black" fill="currentColor" />
         </div>
@@ -32,10 +40,20 @@ const Header: React.FC = () => (
         <a href="#" className="hover:text-amber-500 transition-colors">The Loop</a>
         <a href="#" className="hover:text-amber-500 transition-colors">Features</a>
         <div className="h-4 w-px bg-white/10 mx-2" />
-        <a href="#" className="hover:text-amber-500 transition-colors">Login</a>
-        <button className="bg-amber-500 hover:bg-amber-600 text-black px-5 py-2 rounded-md font-bold text-xs transition-all">
-          Get Started
-        </button>
+        
+        {userEmail ? (
+          <div className="flex items-center gap-4">
+             <span className="text-white text-xs">{userEmail}</span>
+             <button onClick={onLogout} className="text-gray-400 hover:text-white text-xs uppercase font-bold tracking-widest">Logout</button>
+          </div>
+        ) : (
+          <>
+            <button onClick={onLoginClick} className="hover:text-amber-500 transition-colors">Login</button>
+            <button onClick={onSignupClick} className="bg-amber-500 hover:bg-amber-600 text-black px-5 py-2 rounded-md font-bold text-xs transition-all">
+              Get Started
+            </button>
+          </>
+        )}
       </nav>
 
       <button className="md:hidden">
@@ -46,7 +64,11 @@ const Header: React.FC = () => (
 );
 
 // --- Hero Section ---
-const Hero: React.FC = () => (
+interface HeroProps {
+  onSignupClick: () => void;
+}
+
+const Hero: React.FC<HeroProps> = ({ onSignupClick }) => (
   <section className="pt-48 pb-24 px-6 text-center">
     <div className="max-w-4xl mx-auto">
       <h1 className="text-6xl md:text-8xl font-extrabold tracking-tighter mb-6 leading-tight">
@@ -59,7 +81,7 @@ const Hero: React.FC = () => (
       </p>
       
       <div className="flex flex-col items-center gap-6">
-        <button className="bg-amber-500 hover:bg-amber-600 text-black px-10 py-5 rounded-md font-bold text-lg transition-all shadow-lg shadow-amber-500/10">
+        <button onClick={onSignupClick} className="bg-amber-500 hover:bg-amber-600 text-black px-10 py-5 rounded-md font-bold text-lg transition-all shadow-lg shadow-amber-500/10">
           Get Started for Free
         </button>
       </div>
@@ -258,7 +280,11 @@ const The80PercentRule: React.FC = () => (
 );
 
 // --- CTA Section ---
-const CTASection: React.FC = () => (
+interface CTASectionProps {
+  onSignupClick: () => void;
+}
+
+const CTASection: React.FC<CTASectionProps> = ({ onSignupClick }) => (
   <section className="py-48 px-6 text-center">
     <div className="max-w-4xl mx-auto">
       <h2 className="text-5xl md:text-6xl font-extrabold tracking-tighter mb-8 leading-tight">
@@ -270,7 +296,7 @@ const CTASection: React.FC = () => (
       </p>
       
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
-        <button className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-black px-10 py-5 rounded-md font-bold text-lg transition-all">
+        <button onClick={onSignupClick} className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-black px-10 py-5 rounded-md font-bold text-lg transition-all">
           Start Your Mastery Journey
         </button>
         <button className="w-full sm:w-auto bg-white/5 hover:bg-white/10 text-white px-10 py-5 rounded-md font-bold text-lg border border-white/10 transition-all flex items-center justify-center gap-2">
@@ -308,19 +334,44 @@ const Footer: React.FC = () => (
 );
 
 export default function App() {
+  const [view, setView] = useState<'home' | 'login' | 'signup'>('home');
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setUser(user);
+      if (user) setView('home'); 
+    });
+    return () => unsubscribe();
+  }, []);
+
   return (
     <div className="min-h-screen">
-      <Header />
-      <main>
-        <Hero />
-        <ExamLogos />
-        <MasterStandard />
-        <MasteryLoop />
-        <FeaturePillars />
-        <The80PercentRule />
-        <CTASection />
-      </main>
-      <Footer />
+      {view === 'home' ? (
+        <>
+          <Header 
+            onLoginClick={() => setView('login')} 
+            onSignupClick={() => setView('signup')}
+            userEmail={user?.email}
+            onLogout={() => auth.signOut()}
+          />
+          <main>
+            <Hero onSignupClick={() => setView('signup')} />
+            <ExamLogos />
+            <MasterStandard />
+            <MasteryLoop />
+            <FeaturePillars />
+            <The80PercentRule />
+            <CTASection onSignupClick={() => setView('signup')} />
+          </main>
+          <Footer />
+        </>
+      ) : (
+        <AuthPage 
+          initialMode={view === 'login' ? 'login' : 'signup'} 
+          onBack={() => setView('home')}
+        />
+      )}
     </div>
   );
 }
