@@ -2,11 +2,15 @@
 
 Steps you need to run your app locally.
 
-**Prerequisites:**  Node.js
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
 
+2. **Setup environment**:
+   Create a `.env` file and populate it with your <b>Gemini API key</b> and <b>Firebase credentials</b>.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+3. **Run development server**:
+   ```bash
+   npm run dev
+   ```

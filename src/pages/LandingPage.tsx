@@ -24,6 +24,5 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSignupClick }) => (
         <FeaturePillars />
         <The80PercentRule />
         <CTASection onSignupClick={onSignupClick} />
-        <Footer />
     </main>
 );

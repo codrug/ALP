@@ -3,13 +3,12 @@ import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDa18rDaP_f_LkCY-RTvM6hY29sPhSne5Y",
-  authDomain: "adaptive-learning-e5f1f.firebaseapp.com",
-  projectId: "adaptive-learning-e5f1f",
-  storageBucket: "adaptive-learning-e5f1f.firebasestorage.app",
-  messagingSenderId: "899563247305",
-  appId: "1:899563247305:web:69c0ebd313608159fa1f18",
-  measurementId: "G-2X0T31JYKM"
+  apiKey: import.meta.env.FIREBASE_API_KEY,
+  authDomain: import.meta.env.FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.FIREBASE_APP_ID
 };
 
 const app = initializeApp(firebaseConfig);

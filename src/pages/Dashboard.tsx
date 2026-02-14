@@ -1,15 +1,20 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
     AlertTriangle,
     ArrowUpRight,
     RefreshCcw,
-    ChevronRight
+    ChevronRight,
+    TrendingUp
 } from 'lucide-react';
 
-export const Dashboard: React.FC = () => {
+interface DashboardProps {
+    setView: (v: 'landing' | 'auth' | 'dashboard' | 'settings') => void;
+}
+
+export const Dashboard: React.FC<DashboardProps> = ({ setView }) => {
     const readiness = 68;
-    const riskStatus: 'Low' | 'Medium' | 'High' = 'Medium';
+    const [riskStatus] = useState<'Low' | 'Medium' | 'High'>('Medium');
 
     return (
         <div className="pt-28 pb-24 px-6 max-w-7xl mx-auto">
@@ -70,18 +75,33 @@ export const Dashboard: React.FC = () => {
                         ))}
                     </div>
                     <div className="mt-8 pt-8 border-t border-white/5">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Last 3 Attempts</h3>
-                            <ArrowUpRight className="w-4 h-4 text-gray-600" />
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Mastery Trend</h3>
+                            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-green-500/10 text-green-500 rounded-full border border-green-500/20">
+                                <TrendingUp className="w-3 h-3" />
+                                <span className="text-[10px] font-black">+10%</span>
+                            </div>
                         </div>
-                        <div className="flex items-end justify-between gap-2 h-16">
+
+                        {/* Highlighted Trend Visualization */}
+                        <div className="flex items-end justify-between gap-3 h-24 relative">
+                            <div className="absolute inset-0 bg-gradient-to-t from-amber-500/5 to-transparent rounded-lg" />
                             {[58, 62, 68].map((v, i) => (
-                                <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                                    <div className="w-full bg-amber-500/20 hover:bg-amber-500/40 transition-all rounded-t-sm" style={{ height: `${v}%` }} />
-                                    <span className="text-[10px] font-bold text-gray-600">{v}%</span>
+                                <div key={i} className="flex-1 flex flex-col items-center gap-2 relative z-10 group">
+                                    <div className="absolute -top-6 opacity-0 group-hover:opacity-100 transition-opacity bg-amber-500 text-black text-[10px] font-black px-2 py-0.5 rounded shadow-lg">
+                                        {v}%
+                                    </div>
+                                    <div
+                                        className={`w-full ${i === 2 ? 'bg-amber-500 shadow-lg shadow-amber-500/20' : 'bg-white/10'} hover:bg-amber-400 transition-all rounded-t-md cursor-pointer`}
+                                        style={{ height: `${v}%` }}
+                                    />
+                                    <span className={`text-[10px] font-bold ${i === 2 ? 'text-amber-500' : 'text-gray-600'}`}>T{i + 1}</span>
                                 </div>
                             ))}
                         </div>
+                        <p className="text-[10px] text-gray-600 mt-4 leading-relaxed font-medium">
+                            You are consistently outperforming your previous baselines. <span className="text-amber-500 font-bold">Validation imminent.</span>
+                        </p>
                     </div>
                 </div>
             </div>
