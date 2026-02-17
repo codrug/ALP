@@ -24,3 +24,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+task.txt
+
+# AI engine runtime data
+ai-engine/data/

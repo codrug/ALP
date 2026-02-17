@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AuthPage } from './src/pages/AuthPage';
 import { LandingPage } from './src/pages/LandingPage';
 import { Dashboard } from './src/pages/Dashboard';
@@ -10,6 +10,7 @@ import { Header } from './src/components/common/Header';
 import { Footer } from './src/components/common/Footer';
 import { auth } from './src/firebase';
 import { CurriculumItem } from './src/types';
+import { listDocuments } from './src/api';
 
 export default function App() {
   const [view, setView] = useState<'landing' | 'auth' | 'dashboard' | 'settings' | 'upload' | 'curriculum'>('landing');
@@ -17,31 +18,19 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   // Lifted state for curriculum items
-  const [curriculumItems, setCurriculumItems] = useState<CurriculumItem[]>([
-    {
-      id: '1',
-      fileName: 'Molecular_Biology_Unit_3.pdf',
-      subject: 'Biochemistry',
-      topic: 'DNA Replication',
-      date: '2024-03-10',
-      status: 'Active',
-      chapters: [
-        { id: '1', title: 'Helicase Dynamics', concepts: ['ATP Binding', 'Unwinding'], selected: true },
-        { id: '2', title: 'Polymerase Proofreading', concepts: ['Exonuclease Activity'], selected: true }
-      ]
-    },
-    {
-      id: '2',
-      fileName: 'Immunology_Lecture_Notes.docx',
-      subject: 'Immunology',
-      topic: 'Adaptive Response',
-      date: '2024-03-08',
-      status: 'Inactive',
-      chapters: [
-        { id: '1', title: 'T-Cell Maturation', concepts: ['Thymic Selection'], selected: false }
-      ]
+  const [curriculumItems, setCurriculumItems] = useState<CurriculumItem[]>([]);
+  const [itemsError, setItemsError] = useState<string | null>(null);
+
+  const refreshDocuments = useCallback(async () => {
+    try {
+      setItemsError(null);
+      const items = await listDocuments();
+      setCurriculumItems(items as CurriculumItem[]);
+    } catch (err: any) {
+      setItemsError(err.message || 'Failed to load curriculum.');
+      setCurriculumItems([]);
     }
-  ]);
+  }, []);
 
   // Authentication listener
   useEffect(() => {
@@ -53,13 +42,19 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (user) {
+      refreshDocuments();
+    }
+  }, [user, refreshDocuments]);
+
   const handleLogout = async () => {
     await auth.signOut();
     setView('landing');
   };
 
-  const handleUploadComplete = (newItem: CurriculumItem) => {
-    setCurriculumItems(prev => [newItem, ...prev]);
+  const handleUploadComplete = async () => {
+    await refreshDocuments();
     setView('curriculum');
   };
 
@@ -103,14 +98,14 @@ export default function App() {
         )}
 
         {/* Protected Routes */}
-        {safeView === 'dashboard' && <Dashboard setView={setView} />}
+        {safeView === 'dashboard' && <Dashboard setView={setView} itemsError={itemsError} />}
         {safeView === 'settings' && user && <SettingsPage onLogout={handleLogout} user={user} />}
         {safeView === 'upload' && user && <UploadPage onComplete={handleUploadComplete} />}
-        {safeView === 'curriculum' && user && <CurriculumPage items={curriculumItems} />}
+        {safeView === 'curriculum' && user && <CurriculumPage items={curriculumItems} itemsError={itemsError} onRefresh={refreshDocuments} />}
 
       </main>
 
-      {safeView !== 'auth' && <Footer />}
+      {safeView === 'landing' && <Footer />}
 
       <style>{`
         @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

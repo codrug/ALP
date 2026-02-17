@@ -7,7 +7,7 @@
     "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:ai\"",
     "dev:client": "vite",
     "dev:server": "npm run dev --prefix server",
-    "dev:ai": "python -m uvicorn main:app --reload --port 8000 --app-dir ai-engine",
+    "dev:ai": "python -m uvicorn main:app --reload --port 8001 --app-dir ai-engine",
     "build": "vite build",
     "preview": "vite preview"
   },
