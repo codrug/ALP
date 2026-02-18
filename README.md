@@ -11,7 +11,7 @@ source venv/bin/activate  # On Windows use: .\venv\Scripts\activate
 # Install required AI and web libraries
 pip install -r requirements.txt
 
-# IN TERMINAL
+# IN POWERSHELL (TERMINAL FOR LINUX/MAC)
 # Set your Gemini API Key and start the server
 export GOOGLE_API_KEY="your_gemini_api_key_here"
 uvicorn main:app --reload --port 8000
@@ -23,7 +23,7 @@ cd server
 # Install Node dependencies
 npm install
 
-# IN TERMINAL
+# IN POWERSHELL (TERMINAL FOR LINUX/MAC)
 # Set your Firebase secrets and start the development server
 export VITE_FIREBASE_API_KEY="your_api_key"
 export VITE_FIREBASE_AUTH_DOMAIN="your_project.firebaseapp.com"
