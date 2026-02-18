@@ -6,7 +6,9 @@ cd ai-engine <br>
 
 # Create and activate virtual environment
 python3 -m venv venv <br>
-source venv/bin/activate  # On Windows use: .\venv\Scripts\activate <br>
+source venv/bin/activate  <br>
+
+# On Windows use: .\venv\Scripts\activate <br>
 
 # Install required AI and web libraries
 pip install -r requirements.txt <br>
