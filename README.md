@@ -25,12 +25,12 @@ npm install
 
 # IN POWERSHELL (TERMINAL FOR LINUX/MAC)
 # Set your Firebase secrets and start the development server
-export VITE_FIREBASE_API_KEY="your_api_key"
-export VITE_FIREBASE_AUTH_DOMAIN="your_project.firebaseapp.com"
-export VITE_FIREBASE_PROJECT_ID="your_project_id"
-export VITE_FIREBASE_STORAGE_BUCKET="your_project.firebasestorage.app"
-export VITE_FIREBASE_MESSAGING_SENDER_ID="your_sender_id"
-export VITE_FIREBASE_APP_ID="your_app_id"
-export VITE_FIREBASE_MEASUREMENT_ID="your_measurement_id"
+export VITE_FIREBASE_API_KEY="your_api_key" <br>
+export VITE_FIREBASE_AUTH_DOMAIN="your_project.firebaseapp.com"<br>
+export VITE_FIREBASE_PROJECT_ID="your_project_id"<br>
+export VITE_FIREBASE_STORAGE_BUCKET="your_project.firebasestorage.app"<br>
+export VITE_FIREBASE_MESSAGING_SENDER_ID="your_sender_id"<br>
+export VITE_FIREBASE_APP_ID="your_app_id"<br>
+export VITE_FIREBASE_MEASUREMENT_ID="your_measurement_id"<br>
 
 npm run dev
