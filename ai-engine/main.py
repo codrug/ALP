@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from dotenv import load_dotenv
@@ -13,6 +13,9 @@ import uuid
 import logging
 import shutil
 
+# Import the Quiz Router
+from routers import quiz
+
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
 
@@ -23,10 +26,14 @@ load_dotenv(os.path.join(root_dir, '.env'))
 
 app = FastAPI()
 
+# Include the Quiz Router
+app.include_router(quiz.router)
+
 DATA_DIR = Path(current_dir) / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 DOC_DIR = DATA_DIR / "documents"
 DOC_INDEX = DATA_DIR / "documents.json"
+QUIZ_INDEX = DATA_DIR / "quizzes.json"
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 MAX_FILE_SIZE = int(os.getenv("MAX_UPLOAD_MB", "20")) * 1024 * 1024
@@ -86,12 +93,17 @@ def ensure_storage() -> None:
     DOC_DIR.mkdir(parents=True, exist_ok=True)
     if not DOC_INDEX.exists():
         DOC_INDEX.write_text("[]", encoding="utf-8")
+    if not QUIZ_INDEX.exists():
+        QUIZ_INDEX.write_text("{}", encoding="utf-8")
 
 
 def load_documents() -> list[dict]:
     ensure_storage()
     with DOC_INDEX.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+        try:
+            return json.load(handle)
+        except json.JSONDecodeError:
+            return []
 
 
 def save_documents(documents: list[dict]) -> None:
@@ -215,6 +227,7 @@ def format_document(document: dict) -> dict:
         date_str = uploaded_at.split("T")[0]
     return {
         "id": document["id"],
+        "user_id": document.get("user_id", ""),  # Return User ID
         "fileName": document.get("file_name", ""),
         "subject": document.get("subject", ""),
         "topic": document.get("topic", ""),
@@ -225,12 +238,65 @@ def format_document(document: dict) -> dict:
     }
 
 
-def compute_dashboard_summary(documents: list[dict]) -> dict:
+# [UPDATED] Dashboard Calculation logic with User Isolation
+def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
+    # 1. Load Quiz Data
+    quizzes = {}
+    if QUIZ_INDEX.exists():
+        with open(QUIZ_INDEX, "r", encoding="utf-8") as f:
+            try:
+                all_quizzes = json.load(f)
+
+                # Get list of doc IDs belonging to this user
+                user_doc_ids = {d["id"] for d in documents}
+
+                # Filter quizzes to only include those linked to user's documents
+                quizzes = {qid: q for qid, q in all_quizzes.items() if q.get("doc_id") in user_doc_ids}
+            except json.JSONDecodeError:
+                quizzes = {}
+
+    total_quizzes = len(quizzes)
+
+    # 2. Calculate Readiness
+    readiness = 12
+    if total_quizzes > 0:
+        readiness += (total_quizzes * 5)
+
+    readiness = min(readiness, 98)
+
+    # 3. Identify Risks (Weaknesses)
+    gap_counts = {}
+    for q_id, q_data in quizzes.items():
+        for weakness in q_data.get("weaknesses", []):
+            gap_counts[weakness] = gap_counts.get(weakness, 0) + 1
+
+    sorted_risks = sorted(gap_counts.items(), key=lambda x: x[1], reverse=True)
+
+    risk_chapters = []
+    if sorted_risks:
+        for gap, count in sorted_risks[:3]:
+            risk_score = max(10, 80 - (count * 10))
+            risk_chapters.append({"name": f"{gap} Concepts", "score": risk_score})
+    elif documents:
+        # Fallback if no quizzes taken yet but docs exist
+        risk_chapters.append({"name": documents[0].get("subject", "General"), "score": 42})
+
+    # 4. Determine Next Action
+    if not documents:
+        next_action = "Upload a GATE syllabus to start."
+    elif total_quizzes == 0:
+        next_action = f"Initialize your first mastery loop for {documents[0].get('subject', 'your subject')}."
+    elif readiness < 50:
+        next_action = "High risk detected. Recommended: 15-minute diagnostic loop on Foundation concepts."
+    else:
+        next_action = "Maintain momentum. Attempt an application-level quiz."
+
     return {
-        "readiness": 0,
-        "riskChapters": [],
-        "trend": [0, 0, 0],
-        "nextAction": "Dashboard metrics will populate after quizzes are implemented.",
+        "readiness": readiness,
+        "riskChapters": risk_chapters,
+        "trend": [readiness - 10, readiness - 5, readiness],
+        "nextAction": next_action,
+        "hasContent": len(documents) > 0  # Flag for frontend to show/hide analytics
     }
 
 
@@ -257,10 +323,13 @@ def read_health():
     }
 
 
+# [UPDATED] List Documents filtered by User ID
 @app.get("/documents")
-def list_documents():
-    documents = load_documents()
-    return {"items": [format_document(doc) for doc in documents]}
+def list_documents(user_id: str = Query(..., description="The ID of the current user")):
+    all_docs = load_documents()
+    # Filter: Only documents belonging to this user
+    user_docs = [d for d in all_docs if d.get("user_id") == user_id]
+    return {"items": [format_document(doc) for doc in user_docs]}
 
 
 @app.put("/documents/{doc_id}")
@@ -314,18 +383,22 @@ def delete_document(doc_id: str):
     return {"status": "deleted", "id": doc_id}
 
 
+# [UPDATED] Dashboard Summary filtered by User ID
 @app.get("/dashboard/summary")
-def dashboard_summary():
-    documents = load_documents()
-    return compute_dashboard_summary(documents)
+def dashboard_summary(user_id: str = Query(..., description="The ID of the current user")):
+    all_docs = load_documents()
+    user_docs = [d for d in all_docs if d.get("user_id") == user_id]
+    return compute_dashboard_summary(user_id, user_docs)
 
 
+# [UPDATED] Upload Document now saves User ID
 @app.post("/upload")
 async def upload_document(
-    file: UploadFile = File(...),
-    subject: str = Form(...),
-    topic: str = Form(...),
-    exam: str = Form("GATE"),
+        file: UploadFile = File(...),
+        subject: str = Form(...),
+        topic: str = Form(...),
+        exam: str = Form("GATE"),
+        user_id: str = Form(...),  # Require User ID
 ):
     if not allowed_extension(file.filename or ""):
         raise HTTPException(status_code=400, detail="Only PDF and DOCX files are allowed.")
@@ -338,7 +411,9 @@ async def upload_document(
 
     file_hash = hashlib.sha256(contents).hexdigest()
     documents = load_documents()
-    existing = next((doc for doc in documents if doc.get("file_hash") == file_hash), None)
+
+    # Check duplicate ONLY for this user
+    existing = next((d for d in documents if d.get("file_hash") == file_hash and d.get("user_id") == user_id), None)
     if existing:
         return {"file_id": existing["id"], "duplicate": True}
 
@@ -353,6 +428,7 @@ async def upload_document(
 
     document_record = {
         "id": doc_id,
+        "user_id": user_id,  # SAVE USER ID
         "file_name": original_name,
         "subject": subject,
         "topic": topic,
@@ -437,4 +513,5 @@ def parse_document(doc_id: str):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

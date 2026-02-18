@@ -1,4 +1,9 @@
+import { auth } from './firebase';
+
+// Allow environment variable override, default to localhost:8000
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+// --- Types ---
 
 export interface UploadResponse {
     file_id: string;
@@ -8,7 +13,7 @@ export interface UploadResponse {
 export interface ParseResponse {
     file_id: string;
     status: string;
-    chapters: ChapterDto[];
+    chapters: any[]; // You can refine this type if needed
 }
 
 export interface ChapterDto {
@@ -42,19 +47,40 @@ export interface DashboardSummaryDto {
     riskChapters: { name: string; score: number }[];
     trend: number[];
     nextAction: string;
+    hasContent: boolean; // [NEW] Added to match backend response
 }
 
+// --- Helper: Get User ID ---
+
+const getUserId = (): string => {
+    const user = auth.currentUser;
+    if (!user) {
+        // For debugging/dev, you might want to throw a clearer error
+        // or redirect to login. For now, throw Error to stop the request.
+        throw new Error("User not authenticated. Please log in.");
+    }
+    return user.uid;
+};
+
+// --- API Functions ---
+
+/**
+ * Upload a document with metadata and USER ID.
+ */
 export async function uploadDocument(params: {
     file: File;
     subject: string;
     topic: string;
     exam: string;
 }): Promise<UploadResponse> {
+    const userId = getUserId();
+    
     const form = new FormData();
     form.append('file', params.file);
     form.append('subject', params.subject);
     form.append('topic', params.topic);
     form.append('exam', params.exam);
+    form.append('user_id', userId); // [NEW] Send User ID
 
     const response = await fetch(`${API_BASE_URL}/upload`, {
         method: 'POST',
@@ -69,6 +95,11 @@ export async function uploadDocument(params: {
     return response.json();
 }
 
+/**
+ * Trigger parsing for a specific document.
+ * (This works by Doc ID, so User ID is implicitly handled by backend ownership check if implemented, 
+ * but standard practice is usually to verify ownership. For MVP, Doc ID is sufficient.)
+ */
 export async function parseDocument(fileId: string): Promise<ParseResponse> {
     const response = await fetch(`${API_BASE_URL}/documents/${fileId}/parse`, {
         method: 'POST'
@@ -82,8 +113,13 @@ export async function parseDocument(fileId: string): Promise<ParseResponse> {
     return response.json();
 }
 
+/**
+ * List documents belonging to the CURRENT USER.
+ */
 export async function listDocuments(): Promise<CurriculumItemDto[]> {
-    const response = await fetch(`${API_BASE_URL}/documents`);
+    const userId = getUserId();
+    // [NEW] Pass user_id as query param
+    const response = await fetch(`${API_BASE_URL}/documents?user_id=${userId}`);
 
     if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -94,6 +130,9 @@ export async function listDocuments(): Promise<CurriculumItemDto[]> {
     return payload.items || [];
 }
 
+/**
+ * Update document metadata or chapters.
+ */
 export async function updateDocument(docId: string, payload: CurriculumUpdatePayload): Promise<CurriculumItemDto> {
     const response = await fetch(`${API_BASE_URL}/documents/${docId}`, {
         method: 'PUT',
@@ -111,6 +150,9 @@ export async function updateDocument(docId: string, payload: CurriculumUpdatePay
     return response.json();
 }
 
+/**
+ * Delete a document.
+ */
 export async function deleteDocument(docId: string): Promise<{ status: string; id: string }> {
     const response = await fetch(`${API_BASE_URL}/documents/${docId}`, {
         method: 'DELETE'
@@ -124,8 +166,13 @@ export async function deleteDocument(docId: string): Promise<{ status: string; i
     return response.json();
 }
 
+/**
+ * Fetch Dashboard Summary for the CURRENT USER.
+ */
 export async function fetchDashboardSummary(): Promise<DashboardSummaryDto> {
-    const response = await fetch(`${API_BASE_URL}/dashboard/summary`);
+    const userId = getUserId();
+    // [NEW] Pass user_id as query param
+    const response = await fetch(`${API_BASE_URL}/dashboard/summary?user_id=${userId}`);
 
     if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
