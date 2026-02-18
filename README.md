@@ -2,26 +2,26 @@
 
 # BACKEND
 
-cd ai-engine
+cd ai-engine <br>
 
 # Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows use: .\venv\Scripts\activate
+python3 -m venv venv <br>
+source venv/bin/activate  # On Windows use: .\venv\Scripts\activate <br>
 
 # Install required AI and web libraries
-pip install -r requirements.txt
+pip install -r requirements.txt <br>
 
 # IN POWERSHELL (TERMINAL FOR LINUX/MAC)
 # Set your Gemini API Key and start the server
-export GOOGLE_API_KEY="your_gemini_api_key_here"
-uvicorn main:app --reload --port 8000
+export GOOGLE_API_KEY="your_gemini_api_key_here" <br>
+uvicorn main:app --reload --port 8000 <br>
 
 # FRONTEND
 
-cd server
+cd server <br>
 
 # Install Node dependencies
-npm install
+npm install<br>
 
 # IN POWERSHELL (TERMINAL FOR LINUX/MAC)
 # Set your Firebase secrets and start the development server
