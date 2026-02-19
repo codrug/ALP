@@ -1,0 +1,264 @@
+import React, { useEffect, useState } from 'react';
+import { AlertTriangle, RefreshCcw, ChevronRight, TrendingUp, UploadCloud, BarChart3 } from 'lucide-react';
+import { fetchDashboardSummary, listDocuments } from '../api';
+
+interface DashboardProps {
+    setView: (v: 'landing' | 'auth' | 'dashboard' | 'settings' | 'upload' | 'quiz') => void;
+    setQuizDocId: (id: string) => void;
+    itemsError: string | null;
+}
+
+export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, itemsError }) => {
+    // Dashboard Metric State
+    const [readiness, setReadiness] = useState(0);
+    const [trend, setTrend] = useState<number[]>([0, 0, 0]);
+    const [riskAreas, setRiskAreas] = useState<{ name: string; score: number }[]>([]);
+    const [summaryError, setSummaryError] = useState<string | null>(null);
+
+    // [NEW] Track if user actually has data
+    const [hasContent, setHasContent] = useState(false);
+
+    // Document State
+    const [documents, setDocuments] = useState<any[]>([]);
+
+    // Helper logic
+    const riskStatus = readiness >= 80 ? 'Low' : readiness >= 50 ? 'Medium' : 'High';
+    const trendDelta = trend.length >= 2 ? trend[trend.length - 1] - trend[trend.length - 2] : 0;
+
+    // Mastery Check
+    const isMasteryAchieved = readiness >= 80;
+
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                // 1. Load Summary
+                const summary = await fetchDashboardSummary();
+                setHasContent(summary.hasContent); // [CRITICAL] Backend tells us if data exists for THIS user
+
+                if (summary.hasContent) {
+                    setReadiness(summary.readiness || 0);
+                    setTrend(summary.trend || [0, 0, 0]);
+                    setRiskAreas(summary.riskChapters || []);
+                } else {
+                    // Reset state for clean slate if no content
+                    setReadiness(0);
+                    setTrend([0, 0, 0]);
+                    setRiskAreas([]);
+                }
+                setSummaryError(null);
+
+                // 2. Load Documents (Needed for Quiz ID)
+                const docs = await listDocuments();
+                setDocuments(docs || []);
+
+            } catch (err: any) {
+                console.error("Dashboard Load Error:", err);
+                setSummaryError(err.message || 'Unable to load dashboard data.');
+            }
+        };
+
+        loadData();
+    }, []);
+
+    // Smart Action Logic
+    const handlePrimaryAction = () => {
+        if (!hasContent || documents.length === 0) {
+            // Case 1: No content -> Upload
+            setView('upload');
+        } else if (isMasteryAchieved) {
+            // Case 2: Mastery Achieved -> Suggest Uploading New Content
+            setView('upload');
+        } else {
+            // Case 3: Gaps Detected -> Force Quiz Loop
+            setQuizDocId(documents[0].id);
+            setView('quiz');
+        }
+    };
+
+    return (
+        <div className="pt-28 pb-24 px-6 max-w-7xl mx-auto">
+            {/* Header Section */}
+            <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-6">
+                <div>
+                    <h1 className="text-4xl font-extrabold tracking-tighter mb-2 text-white">Morning, Candidate.</h1>
+                    <p className="text-gray-500 font-light">
+                        {hasContent
+                            ? <span>You are <span className="text-amber-500 font-bold">{Math.max(0, 80 - readiness)}%</span> away from the validation threshold.</span>
+                            : "Initialize your learning engine to generate analytics."
+                        }
+                    </p>
+                </div>
+
+                {/* Only show Status Badge if there is content */}
+                {hasContent && (
+                    <div className="flex items-center gap-3 bg-white/[0.03] border border-white/10 px-4 py-2 rounded-lg">
+                        <div className={`w-3 h-3 rounded-full ${riskStatus === 'Low' ? 'bg-green-500' : (riskStatus === 'Medium' ? 'bg-amber-500' : 'bg-red-500')}`} />
+                        <span className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">RISK LEVEL:</span>
+                        <span className={`text-sm font-black ${riskStatus === 'Low' ? 'text-green-500' : (riskStatus === 'Medium' ? 'text-amber-500' : 'text-red-500')}`}>{riskStatus.toUpperCase()}</span>
+                    </div>
+                )}
+            </div>
+
+            {/* CONDITIONAL RENDER: Only show Analytics Grid if user has content */}
+            {hasContent ? (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12 animate-in fade-in slide-in-from-bottom-4">
+                    {/* Readiness Gauge */}
+                    <div className="lg:col-span-2 bg-[#111] border border-white/5 rounded-2xl p-8 flex flex-col md:flex-row items-center gap-12 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 blur-[80px] rounded-full -translate-y-1/2 translate-x-1/2" />
+                        <div className="relative w-64 h-64 flex-shrink-0">
+                            <svg viewBox="0 0 320 320" className="w-full h-full -rotate-90">
+                                <circle cx="160" cy="160" r="140" fill="transparent" stroke="rgba(255,255,255,0.03)" strokeWidth="8" />
+                                <circle cx="160" cy="160" r="140" fill="transparent" stroke="#fbbf24" strokeWidth="12" strokeDasharray="880" strokeDashoffset={880 - (880 * readiness / 100)} strokeLinecap="round" className="transition-all duration-1000" />
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                                <span className="text-6xl font-black tracking-tighter text-white">{readiness}%</span>
+                                <span className="text-[10px] font-bold tracking-[0.2em] text-gray-500 uppercase">READINESS</span>
+                            </div>
+                        </div>
+                        <div className="flex-grow text-center md:text-left">
+                            <h3 className="text-2xl font-bold mb-4 tracking-tight text-white">The 80% Threshold Gap</h3>
+                            <p className="text-gray-400 text-sm font-light leading-relaxed mb-6">
+                                {summaryError || itemsError ? (
+                                    'We could not load your readiness data yet. Please refresh after uploads finish processing.'
+                                ) : (
+                                    `You are currently tracking at ${readiness}%. The system recommends focused remediation until you cross the 80% mark.`
+                                )}
+                            </p>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-white/5 p-4 rounded-xl">
+                                    <div className="text-[10px] font-bold text-gray-500 uppercase mb-1">Exam Track</div>
+                                    <div className="text-xl font-bold text-white">GATE</div>
+                                </div>
+                                <div className="bg-white/5 p-4 rounded-xl">
+                                    <div className="text-[10px] font-bold text-gray-500 uppercase mb-1">Status</div>
+                                    <div className="text-xl font-bold text-white">{riskStatus}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Critical Weaknesses & Trend */}
+                    <div className="bg-[#111] border border-white/5 rounded-2xl p-8">
+                        <h3 className="text-xl font-bold mb-6 flex items-center gap-2 text-white"><AlertTriangle className="w-5 h-5 text-amber-500" />Critical Weaknesses</h3>
+                        <div className="space-y-6">
+                            {riskAreas.length === 0 ? (
+                                <p className="text-gray-600 text-sm">No specific weak points detected yet.</p>
+                            ) : (
+                                riskAreas.map((area, idx) => (
+                                    <div key={idx} className="group cursor-default">
+                                        <div className="flex justify-between items-end mb-2">
+                                            <span className="text-sm font-bold text-gray-300 group-hover:text-white transition-colors">{area.name}</span>
+                                            <span className="text-xs font-black text-amber-500">{area.score}%</span>
+                                        </div>
+                                        <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                                            <div className="h-full bg-amber-500 transition-all duration-700" style={{ width: `${area.score}%` }} />
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <div className="mt-8 pt-8 border-t border-white/5">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Mastery Trend</h3>
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-green-500/10 text-green-500 rounded-full border border-green-500/20">
+                                    <TrendingUp className="w-3 h-3" />
+                                    <span className="text-[10px] font-black">{trendDelta >= 0 ? '+' : ''}{trendDelta}%</span>
+                                </div>
+                            </div>
+
+                            {/* Trend Visualization */}
+                            <div className="flex items-end justify-between gap-3 h-24 relative">
+                                <div className="absolute inset-0 bg-gradient-to-t from-amber-500/5 to-transparent rounded-lg" />
+                                {trend.map((v, i) => (
+                                    <div key={i} className="flex-1 flex flex-col items-center gap-2 relative z-10 group">
+                                        <div className="absolute -top-6 opacity-0 group-hover:opacity-100 transition-opacity bg-amber-500 text-black text-[10px] font-black px-2 py-0.5 rounded shadow-lg">
+                                            {v}%
+                                        </div>
+                                        <div
+                                            className={`w-full ${i === 2 ? 'bg-amber-500 shadow-lg shadow-amber-500/20' : 'bg-white/10'} hover:bg-amber-400 transition-all rounded-t-md cursor-pointer`}
+                                            style={{ height: `${v}%` }}
+                                        />
+                                        <span className={`text-[10px] font-bold ${i === 2 ? 'text-amber-500' : 'text-gray-600'}`}>T{i + 1}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                /* EMPTY STATE (Shown when no content exists) */
+                <div className="mb-12 p-12 border border-white/5 border-dashed rounded-3xl bg-[#0a0a0a] text-center flex flex-col items-center justify-center animate-in fade-in">
+                    <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6">
+                        <BarChart3 className="w-10 h-10 text-gray-600" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-white mb-2">No Analytics Available Yet</h3>
+                    <p className="text-gray-400 max-w-md mb-8">
+                        Your dashboard is empty. Upload your first syllabus or set of notes to generate your readiness score and identify risk areas.
+                    </p>
+                </div>
+            )}
+
+            {/* Smart Action Card (Always Visible) */}
+            <div className={`rounded-3xl p-1 md:p-1.5 shadow-2xl transition-colors duration-500 ${isMasteryAchieved && hasContent ? 'bg-green-500 shadow-green-500/10' : 'bg-amber-500 shadow-amber-500/10'}`}>
+                <div className="bg-[#0a0a0a] rounded-[1.4rem] p-8 md:p-12 text-center flex flex-col items-center">
+
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 transition-colors duration-500 ${isMasteryAchieved && hasContent ? 'bg-green-500/10' : 'bg-amber-500/10'}`}>
+                        {isMasteryAchieved && hasContent ? (
+                            <UploadCloud className="w-8 h-8 text-green-500" />
+                        ) : (
+                            <RefreshCcw className="w-8 h-8 text-amber-500 animate-spin-slow" />
+                        )}
+                    </div>
+
+                    <h2 className="text-3xl md:text-4xl font-black tracking-tighter mb-4 text-white">
+                        {isMasteryAchieved && hasContent ? "Ready for the Next Challenge?" : "Next recommended action?"
+                        }
+                    </h2>
+
+                    <p className="text-gray-400 max-w-xl mx-auto font-light mb-10 leading-relaxed">
+                        {!hasContent ? "System is waiting for source material. Upload notes to initialize the Mastery Engine." :
+                            isMasteryAchieved
+                                ? "Your readiness metric indicates strong command of current topics. It is recommended to expand your syllabus coverage."
+                                : "Your foundation in current topics is weak. Recommended: 15-minute diagnostic loop to eliminate micro-gaps."}
+                    </p>
+
+                    <div className="flex flex-col md:flex-row gap-4">
+                        {/* Primary Button */}
+                        <button
+                            onClick={handlePrimaryAction}
+                            className={`px-12 py-6 rounded-xl font-black text-xl transition-all shadow-xl flex items-center gap-3 active:scale-95 group text-black
+                                ${isMasteryAchieved && hasContent
+                                    ? 'bg-green-500 hover:bg-green-400 shadow-green-500/20'
+                                    : 'bg-amber-500 hover:bg-amber-400 shadow-amber-500/20'}
+                            `}
+                        >
+                            {isMasteryAchieved && hasContent ? "Upload New Material" : hasContent ? "Resume Mastery Loop" : "Initialize Engine"}
+                            {isMasteryAchieved && hasContent
+                                ? <UploadCloud className="w-6 h-6" />
+                                : <ChevronRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
+                            }
+                        </button>
+
+                        {/* Secondary Button (Only visible if Mastery is Achieved AND content exists) */}
+                        {isMasteryAchieved && hasContent && documents.length > 0 && (
+                            <button
+                                onClick={() => {
+                                    setQuizDocId(documents[0].id);
+                                    setView('quiz');
+                                }}
+                                className="px-8 py-6 rounded-xl font-bold text-lg text-gray-400 hover:text-white hover:bg-white/5 border border-white/5 hover:border-white/20 transition-all"
+                            >
+                                Re-visit Current Topic
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <style>{`
+                @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                .animate-spin-slow { animation: spin-slow 12s linear infinite; }
+            `}</style>
+        </div>
+    );
+};
