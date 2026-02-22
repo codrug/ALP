@@ -13,68 +13,65 @@ import {
     Edit3,
     Info
 } from 'lucide-react';
-import { Chapter, CurriculumItem } from '../types';
+import { Chapter } from '../types';
+import { parseDocument, uploadDocument } from '../api';
 
-const UploadPage: React.FC<{ onComplete: (item: CurriculumItem) => void }> = ({ onComplete }) => {
+const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
     const [step, setStep] = useState<'details' | 'uploading' | 'parsing' | 'review'>('details');
     const [progress, setProgress] = useState(0);
     const [fileName, setFileName] = useState<string | null>(null);
     const [chapters, setChapters] = useState<Chapter[]>([]);
+    const [error, setError] = useState<string | null>(null);
+    const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
     // Form State
     const [subject, setSubject] = useState('');
     const [topic, setTopic] = useState('');
     const [isDragging, setIsDragging] = useState(false);
 
+    const subjects = ['Computer Networks', 'Operating Systems', 'Data Structures'];
+
     // Simulation Logic
-    const startProcess = (file: File) => {
-        // Strictly block images and other types
+    const startProcess = async (file: File) => {
+        setError(null);
+        setStatusMessage(null);
+
         const validExtensions = ['pdf', 'docx'];
         const fileExt = file.name.split('.').pop()?.toLowerCase();
 
         if (!fileExt || !validExtensions.includes(fileExt)) {
-            alert('Security Block: Only PDF and DOCX files are permitted for curriculum ingestion. Images and other media formats are restricted.');
+            setError('Only PDF and DOCX files are permitted for curriculum ingestion.');
             return;
         }
 
-        setFileName(file.name);
-        setStep('uploading');
-        setProgress(0);
+        try {
+            setFileName(file.name);
+            setStep('uploading');
+            setProgress(20);
 
-        // Simulate multi-stage ingestion
-        let uploadP = 0;
-        const uploadInterval = setInterval(() => {
-            uploadP += Math.random() * 20;
-            if (uploadP >= 100) {
-                uploadP = 100;
-                clearInterval(uploadInterval);
-                setTimeout(() => {
-                    setStep('parsing');
-                    setProgress(0);
+            const uploadResult = await uploadDocument({
+                file,
+                subject,
+                topic,
+                exam: 'GATE'
+            });
 
-                    let parseP = 0;
-                    const parseInterval = setInterval(() => {
-                        parseP += Math.random() * 12;
-                        if (parseP >= 100) {
-                            parseP = 100;
-                            clearInterval(parseInterval);
-                            setTimeout(() => {
-                                // Simulation of parsed data from Subject/Topic context
-                                setChapters([
-                                    { id: '1', title: `Introduction to ${topic || 'Primary Structures'}`, concepts: ['Foundational Lexicon', 'Framework Overview'], selected: true },
-                                    { id: '2', title: `${subject || 'Core'} Mechanisms in Practice`, concepts: ['Dynamic Feedback', 'Equilibrium States'], selected: true },
-                                    { id: '3', title: 'Advanced Integration & Case Studies', concepts: ['Clinical Pathologies', 'Differential Diagnosis'], selected: true },
-                                    { id: '4', title: 'Syllabus Appendix: Terminology', concepts: ['Glossary of Terms', 'Standard Notation'], selected: false },
-                                ]);
-                                setStep('review');
-                            }, 600);
-                        }
-                        setProgress(Math.min(parseP, 100));
-                    }, 400);
-                }, 800);
+            setProgress(100);
+            if (uploadResult.duplicate) {
+                setStatusMessage('Duplicate detected. Using existing file record.');
             }
-            setProgress(Math.min(uploadP, 100));
-        }, 150);
+
+            setStep('parsing');
+            setProgress(20);
+            const parseResult = await parseDocument(uploadResult.file_id);
+            setProgress(100);
+            setChapters(parseResult.chapters || []);
+            setStep('review');
+        } catch (err: any) {
+            setError(err.message || 'Upload failed.');
+            setStep('details');
+            setProgress(0);
+        }
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,18 +98,7 @@ const UploadPage: React.FC<{ onComplete: (item: CurriculumItem) => void }> = ({ 
 
     const handleComplete = () => {
         if (!fileName) return;
-
-        const newItem: CurriculumItem = {
-            id: Date.now().toString(),
-            fileName: fileName,
-            subject: subject,
-            topic: topic,
-            date: new Date().toISOString().split('T')[0],
-            status: 'Active',
-            chapters: chapters
-        };
-
-        onComplete(newItem);
+        onComplete();
     };
 
     const isFormValid = subject.trim() !== '' && topic.trim() !== '';
@@ -147,19 +133,22 @@ const UploadPage: React.FC<{ onComplete: (item: CurriculumItem) => void }> = ({ 
                                 <Book className="w-10 h-10 text-amber-500" />
                             </div>
                             <h3 className="text-2xl font-black text-white mb-2">Unit Guardrails</h3>
-                            <p className="text-gray-500 text-sm">Targeted material for specific examination benchmarks.</p>
+                            <p className="text-gray-500 text-sm">Targeted GATE material for exam-aligned benchmarks.</p>
                         </div>
 
                         <div className="space-y-6">
                             <div>
                                 <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] mb-3 block">Subject Domain</label>
-                                <input
-                                    type="text"
+                                <select
                                     value={subject}
                                     onChange={(e) => setSubject(e.target.value)}
-                                    placeholder="e.g. Immunology & Microbiology"
-                                    className="w-full bg-black/60 border border-white/10 rounded-2xl p-5 text-sm focus:border-amber-500 outline-none transition-all text-white placeholder:text-gray-700"
-                                />
+                                    className="w-full bg-black/60 border border-white/10 rounded-2xl p-5 text-sm focus:border-amber-500 outline-none transition-all text-white"
+                                >
+                                    <option value="" disabled>Select GATE subject</option>
+                                    {subjects.map((item) => (
+                                        <option key={item} value={item}>{item}</option>
+                                    ))}
+                                </select>
                             </div>
                             <div>
                                 <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] mb-3 block">Topic / Unit Target</label>
@@ -167,7 +156,7 @@ const UploadPage: React.FC<{ onComplete: (item: CurriculumItem) => void }> = ({ 
                                     type="text"
                                     value={topic}
                                     onChange={(e) => setTopic(e.target.value)}
-                                    placeholder="e.g. Hypersensitivity Reactions"
+                                    placeholder="e.g. TCP Congestion Control"
                                     className="w-full bg-black/60 border border-white/10 rounded-2xl p-5 text-sm focus:border-amber-500 outline-none transition-all text-white placeholder:text-gray-700"
                                 />
                             </div>
@@ -202,6 +191,11 @@ const UploadPage: React.FC<{ onComplete: (item: CurriculumItem) => void }> = ({ 
                             <span className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-green-900/60" /> DOCX Records</span>
                             <span className="flex items-center gap-2 text-red-900/40"><X className="w-3.5 h-3.5" /> No Image Media</span>
                         </div>
+                        {error && (
+                            <div className="mt-6 bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-xl">
+                                {error}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -233,6 +227,9 @@ const UploadPage: React.FC<{ onComplete: (item: CurriculumItem) => void }> = ({ 
                         <p className="text-gray-500 text-sm font-light mb-10 italic max-w-xs mx-auto">
                             "{fileName}" is being securely isolated and parsed.
                         </p>
+                        {statusMessage && (
+                            <p className="text-[10px] font-black text-amber-500 tracking-[0.2em] uppercase mb-6">{statusMessage}</p>
+                        )}
                         <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden mb-3">
                             <div className="h-full bg-amber-500 transition-all duration-300 shadow-[0_0_15px_rgba(251,191,36,0.5)]" style={{ width: `${progress}%` }} />
                         </div>
@@ -255,7 +252,13 @@ const UploadPage: React.FC<{ onComplete: (item: CurriculumItem) => void }> = ({ 
                                 </div>
                             </div>
                             <button
-                                onClick={() => setStep('details')}
+                                onClick={() => {
+                                    setStep('details');
+                                    setFileName(null);
+                                    setChapters([]);
+                                    setStatusMessage(null);
+                                    setError(null);
+                                }}
                                 className="flex items-center gap-2 text-[10px] font-black text-gray-600 hover:text-white transition-colors uppercase tracking-widest bg-white/5 px-4 py-2 rounded-xl border border-white/5 ring-1 ring-white/5 hover:bg-white/10"
                             >
                                 <X className="w-3.5 h-3.5" /> Start Over

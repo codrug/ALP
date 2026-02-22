@@ -126,10 +126,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, user }) =>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Current Track</label>
                                     <select className="w-full bg-black/40 border border-white/5 rounded-lg p-3 text-sm focus:border-amber-500/50 outline-none appearance-none text-white">
-                                        <option>USMLE Step 1</option>
-                                        <option>USMLE Step 2 CK</option>
-                                        <option>COMLEX Level 1</option>
-                                        <option>MCAT Comprehensive</option>
+                                        <option>GATE (CSE)</option>
                                     </select>
                                 </div>
 
@@ -138,7 +135,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, user }) =>
                                         <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Target Date</label>
                                         <div className="relative">
                                             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-                                            <input type="date" className="w-full bg-black/40 border border-white/5 rounded-lg py-3 pl-10 pr-4 text-sm focus:border-amber-500/50 outline-none text-white" defaultValue="2024-06-15" />
+                                            <input type="date" className="w-full bg-black/40 border border-white/5 rounded-lg py-3 pl-10 pr-4 text-sm focus:border-amber-500/50 outline-none text-white" />
                                         </div>
                                     </div>
                                     <div className="space-y-2">

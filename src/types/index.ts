@@ -11,6 +11,7 @@ export interface CurriculumItem {
     fileName: string;
     subject: string;
     topic: string;
+    exam: string;
     date: string;
     status: 'Active' | 'Inactive' | 'Processing';
     chapters: Chapter[];
