@@ -29,3 +29,4 @@ task.txt
 
 # AI engine runtime data
 ai-engine/data/
+ai-engine/venv/
