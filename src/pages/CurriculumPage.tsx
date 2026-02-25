@@ -254,7 +254,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ items, itemsError, onRe
                                             className={`w-full bg-transparent border-none p-0 focus:ring-0 text-sm font-bold mb-3 ${c.selected ? 'text-white' : 'text-gray-600 italic line-through decoration-white/10'} disabled:opacity-70`}
                                         />
                                         <div className="flex flex-wrap gap-2">
-                                            {c.concepts.map((concept, i) => (
+                                            {c.concepts.filter(concept => concept.toLowerCase() !== 'untitled section').map((concept, i) => (
                                                 <span key={i} className="text-[9px] font-black px-2.5 py-1 bg-black/40 text-gray-500 rounded-lg border border-white/5">{concept}</span>
                                             ))}
                                         </div>
@@ -288,7 +288,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ items, itemsError, onRe
                                     try {
                                         setIsSaving(true);
                                         setActionError(null);
-                                        await updateDocument(selectedItem.id, {
+                                        const updatedDoc = await updateDocument(selectedItem.id, {
                                             subject: draftItem.subject,
                                             topic: draftItem.topic,
                                             exam: draftItem.exam,
@@ -299,6 +299,8 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ items, itemsError, onRe
                                                 selected: chapter.selected
                                             }))
                                         });
+                                        setSelectedItem(updatedDoc);
+                                        setDraftItem({ ...updatedDoc, chapters: updatedDoc.chapters.map(ch => ({ ...ch })) });
                                         setIsEditing(false);
                                         await onRefresh();
                                     } catch (err: any) {

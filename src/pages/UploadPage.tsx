@@ -14,12 +14,13 @@ import {
     Info
 } from 'lucide-react';
 import { Chapter } from '../types';
-import { parseDocument, uploadDocument } from '../api';
+import { parseDocument, uploadDocument, updateDocument } from '../api';
 
 const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
     const [step, setStep] = useState<'details' | 'uploading' | 'parsing' | 'review'>('details');
     const [progress, setProgress] = useState(0);
     const [fileName, setFileName] = useState<string | null>(null);
+    const [fileId, setFileId] = useState<string | null>(null);
     const [chapters, setChapters] = useState<Chapter[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -55,6 +56,8 @@ const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
                 topic,
                 exam: 'GATE'
             });
+
+            setFileId(uploadResult.file_id);
 
             setProgress(100);
             if (uploadResult.duplicate) {
@@ -96,9 +99,17 @@ const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
         setChapters(prev => prev.map(c => c.id === id ? { ...c, title: newTitle } : c));
     };
 
-    const handleComplete = () => {
-        if (!fileName) return;
-        onComplete();
+    const handleComplete = async () => {
+        if (!fileName || !fileId) return;
+        
+        try {
+            await updateDocument(fileId, {
+                chapters: chapters.map(c => ({ id: c.id, title: c.title, selected: c.selected }))
+            });
+            onComplete();
+        } catch (err: any) {
+            setError(err.message || 'Failed to save changes.');
+        }
     };
 
     const isFormValid = subject.trim() !== '' && topic.trim() !== '';
@@ -299,7 +310,7 @@ const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
                                             <Edit3 className={`w-4 h-4 shrink-0 text-gray-600 transition-opacity ${chapter.selected ? 'opacity-50' : 'opacity-0'}`} />
                                         </div>
                                         <div className="flex flex-wrap gap-2.5">
-                                            {chapter.concepts.map((concept, idx) => (
+                                            {chapter.concepts.filter(c => c.toLowerCase() !== 'untitled section').map((concept, idx) => (
                                                 <span key={idx} className="text-[10px] font-bold px-3 py-1.5 bg-white/[0.02] text-gray-600 rounded-xl border border-white/5 tracking-tight">
                                                     {concept}
                                                 </span>
