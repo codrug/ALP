@@ -35,9 +35,9 @@ DOC_DIR = DATA_DIR / "documents"
 DOC_INDEX = DATA_DIR / "documents.json"
 QUIZ_INDEX = DATA_DIR / "quizzes.json"
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx"}
-MAX_FILE_SIZE = int(os.getenv("MAX_UPLOAD_MB", "20")) * 1024 * 1024
-MIN_TEXT_CHARS = int(os.getenv("MIN_TEXT_CHARS", "200"))
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
+MAX_FILE_SIZE = 5 * 1024 * 1024
+MIN_TEXT_CHARS = 250
 QDRANT_URL = os.getenv("QDRANT_URL", "")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "alp_chunks")
