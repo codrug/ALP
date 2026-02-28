@@ -11,7 +11,7 @@ import {
     Target,
     BookMarked
 } from 'lucide-react';
-import { User as FirebaseUser } from 'firebase/auth';
+import { User as FirebaseUser, updateProfile } from 'firebase/auth';
 
 interface SettingsPageProps {
     onLogout: () => void;
@@ -21,6 +21,45 @@ interface SettingsPageProps {
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, user }) => {
     const [activeTab, setActiveTab] = useState<'profile' | 'exam'>('profile');
     const [imgError, setImgError] = useState(false);
+
+    // Profile State
+    const [tempName, setTempName] = useState(user?.displayName || '');
+
+    // Exam Track State - Using localStorage for persistence as requested
+    const [tempDate, setTempDate] = useState(() => localStorage.getItem('alp_target_date') || '2025-05-15');
+    const [tempScore, setTempScore] = useState(() => localStorage.getItem('alp_target_score') || '255');
+    const [saving, setSaving] = useState(false);
+
+    const handleSave = async () => {
+        if (!user) return;
+        setSaving(true);
+        try {
+            if (activeTab === 'profile') {
+                await updateProfile(user, { displayName: tempName });
+            } else {
+                // Persist exam data to localStorage
+                localStorage.setItem('alp_target_date', tempDate);
+                localStorage.setItem('alp_target_score', tempScore);
+                console.log("Saved exam data:", { tempDate, tempScore });
+            }
+            alert("Changes saved successfully!");
+        } catch (error) {
+            console.error("Error saving changes:", error);
+            alert("Failed to save changes.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDiscard = () => {
+        if (activeTab === 'profile') {
+            setTempName(user?.displayName || '');
+        } else {
+            // Reset to stored values
+            setTempDate(localStorage.getItem('alp_target_date') || '2025-05-15');
+            setTempScore(localStorage.getItem('alp_target_score') || '255');
+        }
+    };
 
     const getInitials = (displayName: string | null) => {
         if (!displayName) return 'C';
@@ -39,12 +78,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, user }) =>
     return (
         <div className="pt-28 pb-24 px-6 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4">
             <div className="flex items-center justify-between mb-12">
-                <h1 className="text-4xl font-black tracking-tighter text-white">Account Center</h1>
+                <h1 className="text-4xl font-black tracking-tighter text-white">Account</h1>
                 <button
                     onClick={onLogout}
                     className="flex items-center gap-2 text-xs font-black text-red-500 hover:text-red-400 transition-colors uppercase tracking-widest px-4 py-2 bg-red-500/5 rounded-lg border border-red-500/10"
                 >
-                    <LogOut className="w-4 h-4" /> End Session
+                    <LogOut className="w-4 h-4" /> Logout
                 </button>
             </div>
 
@@ -55,7 +94,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, user }) =>
                         onClick={() => setActiveTab('profile')}
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold transition-all ${activeTab === 'profile' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'text-gray-500 hover:bg-white/5'}`}
                     >
-                        <User className="w-4 h-4" /> Identity
+                        <User className="w-4 h-4" /> Profile
                     </button>
                     <button
                         onClick={() => setActiveTab('exam')}
@@ -101,7 +140,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, user }) =>
                             <div className="grid grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Full Name</label>
-                                    <input className="w-full bg-black/40 border border-white/5 rounded-lg p-3 text-sm focus:border-amber-500/50 outline-none text-white" defaultValue={displayName} />
+                                    <input
+                                        className="w-full bg-black/40 border border-white/5 rounded-lg p-3 text-sm focus:border-amber-500/50 outline-none text-white"
+                                        value={tempName}
+                                        onChange={(e) => setTempName(e.target.value)}
+                                    />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Institutional Email</label>
@@ -133,16 +176,26 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, user }) =>
                                 <div className="grid grid-cols-2 gap-6">
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Target Date</label>
-                                        <div className="relative">
-                                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-                                            <input type="date" className="w-full bg-black/40 border border-white/5 rounded-lg py-3 pl-10 pr-4 text-sm focus:border-amber-500/50 outline-none text-white" />
+                                        <div className="relative group">
+                                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 group-focus-within:text-amber-500 transition-colors pointer-events-none" />
+                                            <input
+                                                type="date"
+                                                className="w-full bg-black/40 border border-white/5 rounded-lg py-3 pl-10 pr-4 text-sm focus:border-amber-500/50 outline-none text-white [color-scheme:dark]"
+                                                value={tempDate}
+                                                onChange={(e) => setTempDate(e.target.value)}
+                                            />
                                         </div>
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Target Score</label>
                                         <div className="relative">
                                             <Target className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-                                            <input type="number" className="w-full bg-black/40 border border-white/5 rounded-lg py-3 pl-10 pr-4 text-sm focus:border-amber-500/50 outline-none text-white" defaultValue="255" />
+                                            <input
+                                                type="number"
+                                                className="w-full bg-black/40 border border-white/5 rounded-lg py-3 pl-10 pr-4 text-sm focus:border-amber-500/50 outline-none text-white"
+                                                value={tempScore}
+                                                onChange={(e) => setTempScore(e.target.value)}
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -160,8 +213,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onLogout, user }) =>
                     )}
 
                     <div className="flex justify-end gap-4">
-                        <button className="px-6 py-3 rounded-lg text-sm font-bold text-gray-500 hover:text-white transition-colors">Discard</button>
-                        <button className="px-8 py-3 bg-amber-500 text-black rounded-lg text-sm font-black shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all">Save Changes</button>
+                        <button
+                            onClick={handleDiscard}
+                            className="px-6 py-3 rounded-lg text-sm font-bold text-gray-500 hover:text-white transition-colors"
+                        >
+                            Discard
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            disabled={saving}
+                            className="px-8 py-3 bg-amber-500 text-black rounded-lg text-sm font-black shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all disabled:opacity-50"
+                        >
+                            {saving ? 'Saving...' : 'Save Changes'}
+                        </button>
                     </div>
                 </div>
             </div>
