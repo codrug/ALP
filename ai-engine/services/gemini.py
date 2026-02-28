@@ -10,16 +10,25 @@ logger = logging.getLogger("alp")
 # Initialize the Client
 # The new SDK automatically looks for GEMINI_API_KEY or GOOGLE_API_KEY.
 # We explicitly pass it to be safe.
-api_key = os.getenv("GOOGLE_API_KEY")
+api_key = os.getenv("GEMINI_API_KEY")
 client = None
 
 if not api_key:
     logger.warning("GOOGLE_API_KEY not found. AI features will fail.")
 else:
-    client = genai.Client(api_key=api_key)
+    # [FIX] Strip potential whitespace from .env to prevent 400 errors
+    client = genai.Client(api_key=api_key.strip())
 
-# Use the model you requested
-MODEL_ID = "gemini-3-flash-preview"
+# Robust model fallback list
+MODELS_FALLBACK = [
+    "gemini-flash-latest",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-pro-latest"
+]
+
+
 
 
 class GeminiService:
@@ -55,23 +64,46 @@ class GeminiService:
         "{context_text[:25000]}" 
         """
 
-        try:
-            # New SDK call format
-            response = client.models.generate_content(
-                model=MODEL_ID,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"  # Forces JSON output
+        last_exception = None
+        for model_id in MODELS_FALLBACK:
+            try:
+                logger.info(f"Attempting quiz generation with {model_id}...")
+                response = client.models.generate_content(
+                    model=model_id,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json"
+                    )
                 )
-            )
 
-            # Parse the JSON response
-            clean_text = response.text.strip()
-            return json.loads(clean_text)
+                if not response or not response.text:
+                    continue
+                    
+                clean_text = response.text.strip()
+                
+                try:
+                    return json.loads(clean_text)
+                except json.JSONDecodeError as je:
+                    if "```json" in clean_text:
+                        extracted = clean_text.split("```json")[-1].split("```")[0].strip()
+                        return json.loads(extracted)
+                    raise je
 
-        except Exception as e:
-            logger.error(f"Gemini Quiz Generation Failed: {e}")
-            return []
+            except Exception as e:
+                last_exception = e
+                # If it's a 429 (quota) or 404 (model not found), try the next one
+                error_msg = str(e).upper()
+                if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg or "NOT_FOUND" in error_msg or "404" in error_msg:
+                    logger.warning(f"Model {model_id} failed with {e}. Trying fallback...")
+                    continue
+                else:
+                    # For other errors, log and potentially stop
+                    logger.error(f"Gemini Quiz Generation Failed on {model_id}: {e}")
+                    # We continue to next model just in case it's model-specific
+                    continue
+
+        logger.error(f"All Gemini models failed. Last error: {last_exception}")
+        return []
 
     @staticmethod
     def generate_remediation(weak_concepts: List[str], gap_type: str, context: str) -> str:
@@ -90,12 +122,21 @@ class GeminiService:
         Source Text:
         "{context[:5000]}"
         """
-        try:
-            response = client.models.generate_content(
-                model=MODEL_ID,
-                contents=prompt
-            )
-            return response.text
-        except Exception as e:
-            logger.error(f"Remediation Failed: {e}")
-            return "Unable to generate remediation at this time."
+        last_exception = None
+        for model_id in MODELS_FALLBACK:
+            try:
+                response = client.models.generate_content(
+                    model=model_id,
+                    contents=prompt
+                )
+                return response.text
+            except Exception as e:
+                last_exception = e
+                error_msg = str(e).upper()
+                if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg or "NOT_FOUND" in error_msg or "404" in error_msg:
+                    continue
+                else:
+                    break
+        
+        logger.error(f"All Gemini remediation models failed. Last error: {last_exception}")
+        return "Unable to generate remediation at this time."

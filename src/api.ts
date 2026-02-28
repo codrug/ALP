@@ -8,6 +8,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localho
 export interface UploadResponse {
     file_id: string;
     duplicate: boolean;
+    status?: string;
 }
 
 export interface ParseResponse {
@@ -74,7 +75,7 @@ export async function uploadDocument(params: {
     exam: string;
 }): Promise<UploadResponse> {
     const userId = getUserId();
-    
+
     const form = new FormData();
     form.append('file', params.file);
     form.append('subject', params.subject);
@@ -82,17 +83,24 @@ export async function uploadDocument(params: {
     form.append('exam', params.exam);
     form.append('user_id', userId); // [NEW] Send User ID
 
-    const response = await fetch(`${API_BASE_URL}/upload`, {
-        method: 'POST',
-        body: form
-    });
+    try {
+        const response = await fetch(`${API_BASE_URL}/upload`, {
+            method: 'POST',
+            body: form
+        });
 
-    if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.detail || 'Upload failed.');
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.detail || 'Upload failed.');
+        }
+
+        return response.json();
+    } catch (err: any) {
+        if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+            throw new Error(`Connection to AI Engine (${API_BASE_URL}) failed. Is the AI service running?`);
+        }
+        throw err;
     }
-
-    return response.json();
 }
 
 /**
@@ -101,16 +109,23 @@ export async function uploadDocument(params: {
  * but standard practice is usually to verify ownership. For MVP, Doc ID is sufficient.)
  */
 export async function parseDocument(fileId: string): Promise<ParseResponse> {
-    const response = await fetch(`${API_BASE_URL}/documents/${fileId}/parse`, {
-        method: 'POST'
-    });
+    try {
+        const response = await fetch(`${API_BASE_URL}/documents/${fileId}/parse`, {
+            method: 'POST'
+        });
 
-    if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.detail || 'Parsing failed.');
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.detail || 'Parsing failed.');
+        }
+
+        return response.json();
+    } catch (err: any) {
+        if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+            throw new Error(`Connection to AI Engine (${API_BASE_URL}) failed. Is the AI service running?`);
+        }
+        throw err;
     }
-
-    return response.json();
 }
 
 /**
@@ -119,15 +134,22 @@ export async function parseDocument(fileId: string): Promise<ParseResponse> {
 export async function listDocuments(): Promise<CurriculumItemDto[]> {
     const userId = getUserId();
     // [NEW] Pass user_id as query param
-    const response = await fetch(`${API_BASE_URL}/documents?user_id=${userId}`);
+    try {
+        const response = await fetch(`${API_BASE_URL}/documents?user_id=${userId}`);
 
-    if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.detail || 'Failed to load documents.');
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.detail || 'Failed to load documents.');
+        }
+
+        const payload = await response.json();
+        return payload.items || [];
+    } catch (err: any) {
+        if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+            throw new Error(`Connection to AI Engine (${API_BASE_URL}) failed. Is the AI service running?`);
+        }
+        throw err;
     }
-
-    const payload = await response.json();
-    return payload.items || [];
 }
 
 /**
@@ -172,12 +194,19 @@ export async function deleteDocument(docId: string): Promise<{ status: string; i
 export async function fetchDashboardSummary(): Promise<DashboardSummaryDto> {
     const userId = getUserId();
     // [NEW] Pass user_id as query param
-    const response = await fetch(`${API_BASE_URL}/dashboard/summary?user_id=${userId}`);
+    try {
+        const response = await fetch(`${API_BASE_URL}/dashboard/summary?user_id=${userId}`);
 
-    if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.detail || 'Failed to load dashboard.');
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.detail || 'Failed to load dashboard.');
+        }
+
+        return response.json();
+    } catch (err: any) {
+        if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+            throw new Error(`Connection to AI Engine (${API_BASE_URL}) failed. Is the AI service running?`);
+        }
+        throw err;
     }
-
-    return response.json();
 }

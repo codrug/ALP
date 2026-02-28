@@ -54,11 +54,26 @@ def generate_quiz(doc_id: str, chapter_id: str = None):
 
     # 3. Save Quiz Session
     quiz_id = str(uuid.uuid4())
+    
+    # [ROBUSTNESS] Validate that 'questions' is a list and has at least one valid question
+    if not isinstance(questions, list) or len(questions) == 0:
+        raise HTTPException(status_code=500, detail="AI returned empty or invalid question set")
+
+    # Filter out questions with missing required keys to prevent KeyError
+    valid_questions = []
+    required_keys = {"question", "options", "correct_index", "explanation"}
+    for q in questions:
+        if all(key in q for key in required_keys):
+            valid_questions.append(q)
+    
+    if not valid_questions:
+        raise HTTPException(status_code=500, detail="AI response was missing required fields")
+
     quiz_data = {
         "id": quiz_id,
         "doc_id": doc_id,
         "chapter_id": chapter_id,
-        "questions": questions,
+        "questions": valid_questions,
         "score": 0,
         "status": "active",
         "weaknesses": [] 
@@ -74,7 +89,7 @@ def generate_quiz(doc_id: str, chapter_id: str = None):
             "id": idx,
             "question": q["question"],
             "options": q["options"]
-        } for idx, q in enumerate(questions)
+        } for idx, q in enumerate(valid_questions)
     ]
 
     return {"quiz_id": quiz_id, "questions": client_questions}

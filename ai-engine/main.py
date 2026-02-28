@@ -1,10 +1,11 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query
+print("FastAPI loading...")
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-from dotenv import load_dotenv
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel
+from dotenv import load_dotenv
 import hashlib
 import json
 import os
@@ -12,17 +13,16 @@ import re
 import uuid
 import logging
 import shutil
-
-# Import the Quiz Router
-from routers import quiz
-
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
 
-# Load environment variables
+# Load environment variables FIRST
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 load_dotenv(os.path.join(root_dir, '.env'))
+
+# Import the Quiz Router
+from routers import quiz
 
 app = FastAPI()
 
@@ -51,6 +51,8 @@ origins = [
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
 ]
 
 app.add_middleware(
@@ -296,7 +298,7 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
         "riskChapters": risk_chapters,
         "trend": [readiness - 10, readiness - 5, readiness],
         "nextAction": next_action,
-        "hasContent": len(documents) > 0  # Flag for frontend to show/hide analytics
+        "hasContent": total_quizzes > 0  # Flag for frontend to show/hide analytics - only show after first quiz
     }
 
 
@@ -412,10 +414,35 @@ async def upload_document(
     file_hash = hashlib.sha256(contents).hexdigest()
     documents = load_documents()
 
-    # Check duplicate ONLY for this user
-    existing = next((d for d in documents if d.get("file_hash") == file_hash and d.get("user_id") == user_id), None)
-    if existing:
-        return {"file_id": existing["id"], "duplicate": True}
+    # Check Global Duplicate (across ALL users)
+    global_existing = next((d for d in documents if d.get("file_hash") == file_hash), None)
+    
+    if global_existing:
+        # If the current user already has this file, just return it
+        user_existing = next((d for d in documents if d.get("file_hash") == file_hash and d.get("user_id") == user_id), None)
+        if user_existing:
+            return {"file_id": user_existing["id"], "duplicate": True, "status": user_existing.get("status", "Processing")}
+        
+        # New user uploading existing file: INHERIT metadata to save keys/time
+        doc_id = str(uuid.uuid4())
+        new_record = {
+            "id": doc_id,
+            "user_id": user_id,
+            "file_name": normalize_filename(file.filename or "upload"),
+            "subject": subject,
+            "topic": topic,
+            "exam": exam,
+            "status": global_existing.get("status", "Processing"),
+            "uploaded_at": datetime.now().isoformat(),
+            "file_path": global_existing.get("file_path"),
+            "file_hash": file_hash,
+            "chapters": global_existing.get("chapters", []),
+            "chunks": global_existing.get("chunks", []),
+            "raw_text_path": global_existing.get("raw_text_path"),
+        }
+        documents.append(new_record)
+        save_documents(documents)
+        return {"file_id": doc_id, "duplicate": True, "status": new_record["status"]}
 
     doc_id = str(uuid.uuid4())
     original_name = normalize_filename(file.filename or "upload")
@@ -452,6 +479,9 @@ def parse_document(doc_id: str):
     document = next((doc for doc in documents if doc.get("id") == doc_id), None)
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
+
+    if document["status"] == "Active":
+        return {"file_id": doc_id, "status": "Active", "chapters": document.get("chapters", [])}
 
     file_path = Path(document.get("file_path", ""))
     if not file_path.exists():
@@ -513,5 +543,13 @@ def parse_document(doc_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import sys
+    
+    try:
+        print("Starting AI Engine on http://localhost:8000")
+        uvicorn.run(app, host="localhost", port=8000, log_level="info")
+    except Exception as e:
+        print(f"FATAL STARTUP ERROR: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

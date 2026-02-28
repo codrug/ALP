@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowRight, AlertCircle, CheckCircle, XCircle, Loader2, Trophy, UploadCloud, RefreshCw } from 'lucide-react';
+import { API_BASE_URL } from '../api';
 
 interface QuizViewProps {
     docId: string | null;
@@ -11,6 +12,7 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
     const [questions, setQuestions] = useState<any[]>([]);
     const [quizId, setQuizId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     // Interaction State
     const [currentQ, setCurrentQ] = useState(0);
@@ -20,19 +22,28 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
     const [isFinished, setIsFinished] = useState(false);
 
     // 1. Generate Quiz
-    useEffect(() => {
+    const startQuiz = async () => {
         if (!docId) return;
-        const startQuiz = async () => {
-            try {
-                const res = await fetch(`http://localhost:8000/quiz/generate/${docId}`, { method: 'POST' });
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await fetch(`${API_BASE_URL}/quiz/generate/${docId}`, { method: 'POST' });
+            if (!res.ok) {
                 const data = await res.json();
-                setQuestions(data.questions);
-                setQuizId(data.quiz_id);
-                setLoading(false);
-            } catch (err) {
-                console.error("Failed to start quiz", err);
+                throw new Error(data.detail || "Failed to generate quiz");
             }
-        };
+            const data = await res.json();
+            setQuestions(data.questions);
+            setQuizId(data.quiz_id);
+            setLoading(false);
+        } catch (err: any) {
+            console.error("Failed to start quiz", err);
+            setError(err.message || "Failed to start diagnostic loop. The AI engine might be busy.");
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
         startQuiz();
     }, [docId]);
 
@@ -40,7 +51,7 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
     const handleSubmit = async () => {
         if (!quizId || selected === null) return;
 
-        const res = await fetch(`http://localhost:8000/quiz/${quizId}/submit?question_index=${currentQ}&selected_option=${selected}`, {
+        const res = await fetch(`${API_BASE_URL}/quiz/${quizId}/submit?question_index=${currentQ}&selected_option=${selected}`, {
             method: 'POST'
         });
         const data = await res.json();
@@ -89,38 +100,44 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                     </p>
 
                     <div className="space-y-4">
-                        {/* High Score Options */}
-                        {isPassed ? (
-                            <>
-                                <button
-                                    onClick={() => setView('upload')}
-                                    className="w-full bg-green-500 text-black font-bold py-4 rounded-xl hover:bg-green-400 transition-all flex items-center justify-center gap-2"
-                                >
-                                    <UploadCloud className="w-5 h-5" />
-                                    Upload New Material
-                                </button>
-                                <button
-                                    onClick={() => setView('dashboard')}
-                                    className="w-full bg-white/5 text-gray-300 font-bold py-4 rounded-xl hover:bg-white/10 transition-all"
-                                >
-                                    Stay on Current Topic
-                                </button>
-                            </>
-                        ) : (
-                            /* Low Score Option */
-                            <button
-                                onClick={() => setView('dashboard')}
-                                className="w-full bg-white text-black font-bold py-4 rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center gap-2"
-                            >
-                                <ArrowRight className="w-5 h-5" />
-                                Return to Dashboard
-                            </button>
-                        )}
+                        <button
+                            onClick={() => setView('dashboard')}
+                            className={`w-full font-black py-4 rounded-xl transition-all flex items-center justify-center gap-2 ${isPassed ? 'bg-green-500 text-black hover:bg-green-400' : 'bg-white text-black hover:bg-gray-200'
+                                }`}
+                        >
+                            <ArrowRight className="w-5 h-5" />
+                            View Results Dashboard
+                        </button>
                     </div>
                 </div>
             </div>
         );
     }
+
+    if (error) return (
+        <div className="min-h-screen pt-28 px-6 flex items-center justify-center">
+            <div className="max-w-md w-full bg-[#111] border border-red-500/20 rounded-3xl p-10 text-center">
+                <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-6" />
+                <h2 className="text-2xl font-black text-white mb-4">Assessment Failed</h2>
+                <p className="text-gray-400 mb-8 leading-relaxed">{error}</p>
+                <div className="flex flex-col gap-4">
+                    <button
+                        onClick={startQuiz}
+                        className="w-full bg-amber-500 text-black font-black py-4 rounded-xl hover:bg-amber-400 transition-all flex items-center justify-center gap-2"
+                    >
+                        <RefreshCw className="w-5 h-5" />
+                        Retry Generation
+                    </button>
+                    <button
+                        onClick={() => setView('dashboard')}
+                        className="w-full bg-white/5 text-gray-400 font-bold py-4 rounded-xl hover:bg-white/10 transition-all"
+                    >
+                        Back to Dashboard
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
 
     if (loading) return (
         <div className="min-h-screen pt-28 flex flex-col items-center justify-center text-white">
@@ -133,8 +150,8 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
 
     return (
         <div className="min-h-screen pt-28 px-6 max-w-4xl mx-auto">
-             {/* Progress Bar */}
-             <div className="w-full h-1 bg-white/10 rounded-full mb-12">
+            {/* Progress Bar */}
+            <div className="w-full h-1 bg-white/10 rounded-full mb-12">
                 <div
                     className="h-full bg-amber-500 transition-all duration-500"
                     style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }}
@@ -160,10 +177,10 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                                 ${feedback && idx === feedback.correct_index
                                     ? 'border-green-500 bg-green-500/10 text-green-500'
                                     : feedback && idx === selected && idx !== feedback.correct_index
-                                    ? 'border-red-500 bg-red-500/10 text-red-500'
-                                    : selected === idx
-                                    ? 'border-amber-500 bg-amber-500/5 text-white'
-                                    : 'border-white/5 bg-white/[0.02] text-gray-400 hover:bg-white/[0.05]'
+                                        ? 'border-red-500 bg-red-500/10 text-red-500'
+                                        : selected === idx
+                                            ? 'border-amber-500 bg-amber-500/5 text-white'
+                                            : 'border-white/5 bg-white/[0.02] text-gray-400 hover:bg-white/[0.05]'
                                 }
                             `}
                         >

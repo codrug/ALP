@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
   return {
     server: {
       port: 3000,
-      host: '0.0.0.0',
+      host: 'localhost',
       proxy: {
         '/api': {
           target: 'http://localhost:3001',
@@ -17,6 +17,7 @@ export default defineConfig(({ mode }) => {
           target: 'http://localhost:8000',
           changeOrigin: true,
         }
+
       }
     },
     plugins: [react()],
