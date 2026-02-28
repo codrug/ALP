@@ -30,3 +30,8 @@ task.txt
 # AI engine runtime data
 ai-engine/data/
 ai-engine/venv/
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc

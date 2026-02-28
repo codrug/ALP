@@ -52,8 +52,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-400">
                     {currentView === 'landing' ? (
                         <>
-                            <a href="#" className="hover:text-amber-500 transition-colors">The Standard</a>
-                            <a href="#" className="hover:text-amber-500 transition-colors">The Loop</a>
+                            <a href="#standard" className="hover:text-amber-500 transition-colors">The Standard</a>
+                            <a href="#loop" className="hover:text-amber-500 transition-colors">The Loop</a>
                             <div className="h-4 w-px bg-white/10 mx-2" />
                             <button onClick={onLoginClick} className="hover:text-amber-500 transition-colors">Login</button>
                             <button onClick={onSignupClick} className="bg-amber-500 hover:bg-amber-600 text-black px-5 py-2 rounded-md font-bold text-xs transition-all flex items-center gap-2">

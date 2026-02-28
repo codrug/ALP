@@ -7,7 +7,7 @@
     "dev": "npx concurrently \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:ai\"",
     "dev:client": "npx vite",
     "dev:server": "npm run dev --prefix server",
-    "dev:ai": "python -m uvicorn --app-dir ai-engine main:app --reload --port 8000 --host localhost",
+    "dev:ai": ".\\ai-engine\\venv\\Scripts\\python.exe -m uvicorn --app-dir ai-engine main:app --reload --port 8000 --host localhost",
     "build": "vite build",
     "preview": "vite preview"
   },

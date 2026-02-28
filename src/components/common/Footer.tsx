@@ -11,11 +11,10 @@ export const Footer: React.FC = () => (
                 <a href="#" className="hover:text-white transition-colors">Privacy</a>
                 <a href="#" className="hover:text-white transition-colors">Terms</a>
                 <a href="#" className="hover:text-white transition-colors">Contact</a>
-                <a href="#" className="hover:text-white transition-colors">Twitter</a>
             </div>
 
             <p className="text-gray-600 text-[10px] font-medium">
-                © 2024 Master Learning Platform. All rights reserved.
+                © 2026 Master Learning Platform. All rights reserved.
             </p>
         </div>
     </footer>

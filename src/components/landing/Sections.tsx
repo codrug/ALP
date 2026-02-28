@@ -45,7 +45,7 @@ export const ExamLogos: React.FC = () => (
         <div className="max-w-7xl mx-auto px-6 text-center">
             <p className="text-[10px] uppercase font-bold tracking-widest text-gray-600 mb-10">Built for high-stakes exams</p>
             <div className="flex flex-wrap justify-center items-center gap-12 md:gap-24 opacity-40 grayscale transition-all hover:grayscale-0 duration-500">
-                {['USMLE', 'BAR EXAM', 'MCAT', 'NCLEX', 'CPA'].map((exam) => (
+                {['GATE', 'CAT', 'IIT-JEE', 'UPSC', 'NEET'].map((exam) => (
                     <span key={exam} className="text-2xl font-black tracking-tighter text-gray-200 hover:text-white transition-colors cursor-default">{exam}</span>
                 ))}
             </div>
@@ -55,7 +55,7 @@ export const ExamLogos: React.FC = () => (
 
 // --- Master Standard Section ---
 export const MasterStandard: React.FC = () => (
-    <section className="py-32 px-6 bg-black">
+    <section id="standard" className="py-32 px-6 bg-black">
         <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-20">
             <div>
                 <h2 className="text-5xl font-extrabold tracking-tighter mb-8 leading-tight text-white">
@@ -89,7 +89,7 @@ export const MasterStandard: React.FC = () => (
 
 // --- Mastery Loop Visualiser ---
 export const MasteryLoop: React.FC = () => (
-    <section className="py-32 px-6 bg-black relative overflow-hidden">
+    <section id="loop" className="py-32 px-6 bg-black relative overflow-hidden">
         <div className="max-w-7xl mx-auto text-center mb-20 relative z-10">
             <h2 className="text-5xl font-extrabold tracking-tighter mb-6 text-white">The 5-Step Mastery Loop</h2>
             <p className="text-gray-400 max-w-2xl mx-auto font-light leading-relaxed">
@@ -102,10 +102,10 @@ export const MasteryLoop: React.FC = () => (
             <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/10 -translate-x-1/2 hidden md:block" />
 
             {[
-                { step: '01', title: 'Upload Source', desc: 'Upload your curriculum—PDFs, textbooks, or syllabus. Our AI analyzes the material to build a unique knowledge graph specifically for your exam board requirements.', icon: <FileUp />, label: 'INITIATION' },
+                { step: '01', title: 'Upload Source', desc: 'Upload your notes. Our AI analyzes the material to build a unique knowledge graph specifically for your exam board requirements.', icon: <FileUp />, label: 'INITIATION' },
                 { step: '02', title: 'Adaptive Quiz', desc: 'Engage with diagnostic questions that mirror actual exam difficulty. The system probes your understanding across all modules to find where you are strongest and weakest.', icon: <Zap />, label: 'BASELINE' },
                 { step: '03', title: 'Gap Diagnosis', desc: 'Receive a detailed heat map of your knowledge. We identify the exact "micro-gaps" that would prevent you from hitting the 80% mastery threshold.', icon: <Microscope />, label: 'ANALYSIS' },
-                { step: '04', title: 'Remediation', desc: 'Our system generates hyper-focused review sessions. No filler. You only study the specific concepts you missed until the logic is second nature.', icon: <RefreshCcw />, label: 'CORRECTION' },
+                { step: '04', title: 'Remediation', desc: 'Our system generates hyper-focused review sessions. You only study the specific concepts you missed until the logic is second nature.', icon: <RefreshCcw />, label: 'CORRECTION' },
                 { step: '05', title: 'Reassessment', desc: 'Prove mastery. If you score above 80%, the next module unlocks. If not, the loop continues. We ensure 100% confidence before you step into the exam room.', icon: <Lock />, label: 'VALIDATION' }
             ].map((item, idx) => (
                 <div key={idx} className={`flex items-center gap-12 md:gap-0 mb-16 relative ${idx % 2 === 0 ? 'md:flex-row' : 'md:flex-row-reverse'}`}>
@@ -253,7 +253,6 @@ export const CTASection: React.FC<CTASectionProps> = ({ onSignupClick }) => (
                     <Play className="w-5 h-5 fill-current" /> View Demo
                 </button>
             </div>
-            <p className="text-gray-600 text-xs font-medium tracking-tight">No credit card required. Cancel anytime.</p>
         </div>
     </section>
 );
