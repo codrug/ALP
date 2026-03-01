@@ -14,7 +14,7 @@ import uuid
 import logging
 import shutil
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Distance, VectorParams
+from qdrant_client.http.models import Distance, VectorParams, PointStruct
 
 # Load environment variables FIRST
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -23,6 +23,7 @@ load_dotenv(os.path.join(root_dir, '.env'))
 
 # Import the Quiz Router
 from routers import quiz
+from services.gemini import GeminiService
 
 app = FastAPI()
 
@@ -283,22 +284,48 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
         # Fallback if no quizzes taken yet but docs exist
         risk_chapters.append({"name": documents[0].get("subject", "General"), "score": 42})
 
-    # 4. Determine Next Action
+    # 4. Determine Next Action & Type (for smart quiz recommendation)
+    next_action = ""
+    next_action_type = "upload"  # upload | diagnostic | subject | expand
+
     if not documents:
         next_action = "Upload a GATE syllabus to start."
+        next_action_type = "upload"
     elif total_quizzes == 0:
-        next_action = f"Initialize your first mastery loop for {documents[0].get('subject', 'your subject')}."
+        next_action = f"Take a diagnostic quiz to benchmark your readiness across all {len(documents)} synchronized modules."
+        next_action_type = "diagnostic"
     elif readiness < 50:
-        next_action = "High risk detected. Recommended: 15-minute diagnostic loop on Foundation concepts."
+        # Find the weakest subject for targeted recommendation
+        if sorted_risks:
+            weakest = sorted_risks[0][0]
+            next_action = f"Critical gap in {weakest}. Recommended: Subject-wise quiz to isolate and eliminate micro-gaps."
+            next_action_type = "subject"
+        else:
+            next_action = "High risk detected. Recommended: Full diagnostic to identify weak foundations."
+            next_action_type = "diagnostic"
+    elif readiness < 80:
+        if sorted_risks:
+            weakest = sorted_risks[0][0]
+            next_action = f"Focus on {weakest} — a targeted subject quiz will close the gap to 80% mastery."
+            next_action_type = "subject"
+        else:
+            next_action = "Run a diagnostic quiz to validate your progress across all topics."
+            next_action_type = "diagnostic"
     else:
-        next_action = "Maintain momentum. Attempt an application-level quiz."
+        next_action = "Strong command detected. Expand your syllabus coverage or re-validate with a diagnostic."
+        next_action_type = "expand"
+
+    # Collect unique subjects from user docs for frontend
+    subjects = list({d.get("subject", "") for d in documents if d.get("subject")})
 
     return {
         "readiness": readiness,
         "riskChapters": risk_chapters,
         "trend": [readiness - 10, readiness - 5, readiness],
         "nextAction": next_action,
-        "hasContent": total_quizzes > 0  # Flag for frontend to show/hide analytics - only show after first quiz
+        "nextActionType": next_action_type,
+        "subjects": subjects,
+        "hasContent": total_quizzes > 0
     }
 
 
@@ -537,6 +564,45 @@ def parse_document(doc_id: str):
     document["chunks"] = chunk_metadata
 
     save_documents(documents)
+
+    # --- Qdrant Embedding & Upsert ---
+    qdrant_client = getattr(app.state, "qdrant", None)
+    if qdrant_client and chunk_metadata:
+        try:
+            chunk_texts = []
+            for cm in chunk_metadata:
+                txt_path = Path(cm["text_path"])
+                if txt_path.exists():
+                    chunk_texts.append(txt_path.read_text(encoding="utf-8")[:2000])
+                else:
+                    chunk_texts.append("")
+
+            vectors = GeminiService.generate_embeddings(chunk_texts)
+            if vectors and len(vectors) == len(chunk_texts):
+                points = []
+                for idx, (vec, cm) in enumerate(zip(vectors, chunk_metadata)):
+                    point_id = str(uuid.uuid4())
+                    points.append(PointStruct(
+                        id=point_id,
+                        vector=vec,
+                        payload={
+                            "doc_id": doc_id,
+                            "user_id": document.get("user_id", ""),
+                            "chapter_index": idx + 1,
+                            "title": cm["title"],
+                            "page_start": cm["page_start"],
+                            "page_end": cm["page_end"],
+                            "subject": document.get("subject", ""),
+                            "topic": document.get("topic", ""),
+                        }
+                    ))
+                qdrant_client.upsert(
+                    collection_name=QDRANT_COLLECTION,
+                    points=points,
+                )
+                logger.info(f"Upserted {len(points)} vectors to Qdrant for doc {doc_id}")
+        except Exception as exc:
+            logger.warning(f"Qdrant upsert failed for doc {doc_id}: {exc}")
 
     return {"file_id": doc_id, "status": document["status"], "chapters": chapters}
 

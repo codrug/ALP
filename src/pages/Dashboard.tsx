@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, RefreshCcw, ChevronRight, TrendingUp, UploadCloud, BarChart3 } from 'lucide-react';
+import { AlertTriangle, RefreshCcw, ChevronRight, TrendingUp, UploadCloud, BarChart3, Zap, Book } from 'lucide-react';
 import { fetchDashboardSummary, listDocuments } from '../api';
 
 interface DashboardProps {
-    setView: (v: 'landing' | 'auth' | 'dashboard' | 'settings' | 'upload' | 'quiz') => void;
+    setView: (v: 'landing' | 'auth' | 'dashboard' | 'settings' | 'upload' | 'quiz-page' | 'quiz') => void;
     setQuizDocId: (id: string) => void;
     itemsError: string | null;
 }
@@ -15,8 +15,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
     const [riskAreas, setRiskAreas] = useState<{ name: string; score: number }[]>([]);
     const [summaryError, setSummaryError] = useState<string | null>(null);
 
-    // [NEW] Track if user actually has data
     const [hasContent, setHasContent] = useState(false);
+    const [nextActionType, setNextActionType] = useState<string>('upload');
+    const [nextAction, setNextAction] = useState<string>('');
 
     // Document State
     const [documents, setDocuments] = useState<any[]>([]);
@@ -25,29 +26,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
     const riskStatus = readiness >= 80 ? 'Low' : readiness >= 50 ? 'Medium' : 'High';
     const trendDelta = trend.length >= 2 ? trend[trend.length - 1] - trend[trend.length - 2] : 0;
 
-    // Mastery Check
-    const isMasteryAchieved = readiness >= 80;
-
     useEffect(() => {
         const loadData = async () => {
             try {
-                // 1. Load Summary
                 const summary = await fetchDashboardSummary();
-                setHasContent(summary.hasContent); // [CRITICAL] Backend tells us if data exists for THIS user
+                setHasContent(summary.hasContent);
+                setNextActionType(summary.nextActionType || 'upload');
+                setNextAction(summary.nextAction || '');
 
                 if (summary.hasContent) {
                     setReadiness(summary.readiness || 0);
                     setTrend(summary.trend || [0, 0, 0]);
                     setRiskAreas(summary.riskChapters || []);
                 } else {
-                    // Reset state for clean slate if no content
                     setReadiness(0);
-                    setTrend([0,0,0]);
+                    setTrend([0, 0, 0]);
                     setRiskAreas([]);
                 }
                 setSummaryError(null);
 
-                // 2. Load Documents (Needed for Quiz ID)
                 const docs = await listDocuments();
                 setDocuments(docs || []);
 
@@ -60,20 +57,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
         loadData();
     }, []);
 
-    // Smart Action Logic
+    // Smart Action Logic — route based on nextActionType
     const handlePrimaryAction = () => {
-        if (!hasContent || documents.length === 0) {
-            // Case 1: No content -> Upload
+        if (nextActionType === 'upload' || (!hasContent && documents.length === 0)) {
             setView('upload');
-        } else if (isMasteryAchieved) {
-            // Case 2: Mastery Achieved -> Suggest Uploading New Content
+        } else if (nextActionType === 'expand') {
             setView('upload');
         } else {
-            // Case 3: Gaps Detected -> Force Quiz Loop
-            setQuizDocId(documents[0].id);
-            setView('quiz');
+            // diagnostic or subject → go to quiz page
+            setView('quiz-page');
         }
     };
+
+    // Determine CTA label and icon
+    const getCtaConfig = () => {
+        if (!hasContent && documents.length === 0) {
+            return { label: 'Initialize Engine', color: 'amber' };
+        }
+        if (documents.length > 0 && !hasContent) {
+            return { label: 'Start Diagnostic Quiz', color: 'amber' };
+        }
+        if (nextActionType === 'diagnostic') {
+            return { label: 'Start Diagnostic Quiz', color: 'amber' };
+        }
+        if (nextActionType === 'subject') {
+            return { label: 'Start Subject Quiz', color: 'amber' };
+        }
+        if (nextActionType === 'expand') {
+            return { label: 'Upload New Material', color: 'green' };
+        }
+        return { label: 'Resume Mastery Loop', color: 'amber' };
+    };
+
+    const cta = getCtaConfig();
 
     return (
         <div className="pt-28 pb-24 px-6 max-w-7xl mx-auto">
@@ -89,7 +105,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
                     </p>
                 </div>
 
-                {/* Only show Status Badge if there is content */}
                 {hasContent && (
                     <div className="flex items-center gap-3 bg-white/[0.03] border border-white/10 px-4 py-2 rounded-lg">
                         <div className={`w-3 h-3 rounded-full ${riskStatus === 'Low' ? 'bg-green-500' : (riskStatus === 'Medium' ? 'bg-amber-500' : 'bg-red-500')}`} />
@@ -99,7 +114,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
                 )}
             </div>
 
-            {/* CONDITIONAL RENDER: Only show Analytics Grid if user has content */}
+            {/* Analytics Grid — only if quizzes taken */}
             {hasContent ? (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12 animate-in fade-in slide-in-from-bottom-4">
                     {/* Readiness Gauge */}
@@ -165,8 +180,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
                                     <span className="text-[10px] font-black">{trendDelta >= 0 ? '+' : ''}{trendDelta}%</span>
                                 </div>
                             </div>
-
-                            {/* Trend Visualization */}
                             <div className="flex items-end justify-between gap-3 h-24 relative">
                                 <div className="absolute inset-0 bg-gradient-to-t from-amber-500/5 to-transparent rounded-lg" />
                                 {trend.map((v, i) => (
@@ -186,70 +199,59 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
                     </div>
                 </div>
             ) : (
-                /* EMPTY STATE (Shown when no content exists) */
                 <div className="mb-12 p-12 border border-white/5 border-dashed rounded-3xl bg-[#0a0a0a] text-center flex flex-col items-center justify-center animate-in fade-in">
                     <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6">
                         <BarChart3 className="w-10 h-10 text-gray-600" />
                     </div>
                     <h3 className="text-2xl font-bold text-white mb-2">No Analytics Available Yet</h3>
                     <p className="text-gray-400 max-w-md mb-8">
-                        Your dashboard is empty. Upload your first syllabus or set of notes to generate your readiness score and identify risk areas.
+                        {documents.length > 0
+                            ? "Your syllabus is loaded. Take your first quiz to generate readiness analytics."
+                            : "Upload your first syllabus or set of notes to get started."
+                        }
                     </p>
                 </div>
             )}
 
-            {/* Smart Action Card (Always Visible) */}
-            <div className={`rounded-3xl p-1 md:p-1.5 shadow-2xl transition-colors duration-500 ${isMasteryAchieved && hasContent ? 'bg-green-500 shadow-green-500/10' : 'bg-amber-500 shadow-amber-500/10'}`}>
+            {/* Smart Action Card — always visible */}
+            <div className={`rounded-3xl p-1 md:p-1.5 shadow-2xl transition-colors duration-500 ${cta.color === 'green' ? 'bg-green-500 shadow-green-500/10' : 'bg-amber-500 shadow-amber-500/10'}`}>
                 <div className="bg-[#0a0a0a] rounded-[1.4rem] p-8 md:p-12 text-center flex flex-col items-center">
 
-                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 transition-colors duration-500 ${isMasteryAchieved && hasContent ? 'bg-green-500/10' : 'bg-amber-500/10'}`}>
-                        {isMasteryAchieved && hasContent ? (
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 transition-colors duration-500 ${cta.color === 'green' ? 'bg-green-500/10' : 'bg-amber-500/10'}`}>
+                        {cta.color === 'green' ? (
                             <UploadCloud className="w-8 h-8 text-green-500" />
+                        ) : nextActionType === 'diagnostic' ? (
+                            <Zap className="w-8 h-8 text-amber-500" />
+                        ) : nextActionType === 'subject' ? (
+                            <Book className="w-8 h-8 text-amber-500" />
                         ) : (
                             <RefreshCcw className="w-8 h-8 text-amber-500 animate-spin-slow" />
                         )}
                     </div>
 
                     <h2 className="text-3xl md:text-4xl font-black tracking-tighter mb-4 text-white">
-                        {isMasteryAchieved && hasContent ? "Ready for the Next Challenge?" : "What should I do next?"}
+                        What should I do next?
                     </h2>
 
                     <p className="text-gray-400 max-w-xl mx-auto font-light mb-10 leading-relaxed">
-                        {!hasContent ? "System is waiting for source material. Upload notes to initialize the Mastery Engine." :
-                         isMasteryAchieved
-                            ? "Your readiness metric indicates strong command of current topics. It is recommended to expand your syllabus coverage."
-                            : "Your foundation in current topics is weak. Recommended: 15-minute diagnostic loop to eliminate micro-gaps."}
+                        {nextAction || "System is waiting for source material. Upload notes to initialize the Mastery Engine."}
                     </p>
 
                     <div className="flex flex-col md:flex-row gap-4">
-                        {/* Primary Button */}
                         <button
                             onClick={handlePrimaryAction}
                             className={`px-12 py-6 rounded-xl font-black text-xl transition-all shadow-xl flex items-center gap-3 active:scale-95 group text-black
-                                ${isMasteryAchieved && hasContent
+                                ${cta.color === 'green'
                                     ? 'bg-green-500 hover:bg-green-400 shadow-green-500/20'
                                     : 'bg-amber-500 hover:bg-amber-400 shadow-amber-500/20'}
                             `}
                         >
-                            {isMasteryAchieved && hasContent ? "Upload New Material" : hasContent ? "Resume Mastery Loop" : "Initialize Engine"}
-                            {isMasteryAchieved && hasContent
+                            {cta.label}
+                            {cta.color === 'green'
                                 ? <UploadCloud className="w-6 h-6" />
                                 : <ChevronRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
                             }
                         </button>
-
-                        {/* Secondary Button (Only visible if Mastery is Achieved AND content exists) */}
-                        {isMasteryAchieved && hasContent && documents.length > 0 && (
-                            <button
-                                onClick={() => {
-                                    setQuizDocId(documents[0].id);
-                                    setView('quiz');
-                                }}
-                                className="px-8 py-6 rounded-xl font-bold text-lg text-gray-400 hover:text-white hover:bg-white/5 border border-white/5 hover:border-white/20 transition-all"
-                            >
-                                Re-visit Current Topic
-                            </button>
-                        )}
                     </div>
                 </div>
             </div>

@@ -48,7 +48,9 @@ export interface DashboardSummaryDto {
     riskChapters: { name: string; score: number }[];
     trend: number[];
     nextAction: string;
-    hasContent: boolean; // [NEW] Added to match backend response
+    nextActionType: 'upload' | 'diagnostic' | 'subject' | 'expand';
+    subjects: string[];
+    hasContent: boolean;
 }
 
 // --- Helper: Get User ID ---

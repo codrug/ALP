@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, LogOut, LayoutDashboard, User, BookOpen, FileUp } from 'lucide-react';
+import { Menu, LogOut, LayoutDashboard, User, BookOpen, FileUp, Zap } from 'lucide-react';
 import { Logo } from './Logo';
 import { User as FirebaseUser } from 'firebase/auth';
 
@@ -8,8 +8,8 @@ interface HeaderProps {
     onSignupClick: () => void;
     userEmail: string | null;
     onLogout: () => void;
-    currentView: 'landing' | 'auth' | 'dashboard' | 'settings' | 'upload' | 'curriculum';
-    setView: (view: 'landing' | 'auth' | 'dashboard' | 'settings' | 'upload' | 'curriculum') => void;
+    currentView: 'landing' | 'auth' | 'dashboard' | 'settings' | 'upload' | 'curriculum' | 'quiz-page';
+    setView: (view: 'landing' | 'auth' | 'dashboard' | 'settings' | 'upload' | 'curriculum' | 'quiz-page') => void;
     user?: FirebaseUser | null;
 }
 
@@ -69,6 +69,12 @@ export const Header: React.FC<HeaderProps> = ({
                                         className={`flex items-center gap-2 transition-colors ${currentView === 'dashboard' ? 'text-white font-bold' : 'hover:text-white'}`}
                                     >
                                         <LayoutDashboard className="w-4 h-4" /> Overview
+                                    </button>
+                                    <button
+                                        onClick={() => setView('quiz-page')}
+                                        className={`flex items-center gap-2 transition-colors ${currentView === 'quiz-page' ? 'text-white font-bold' : 'hover:text-white'}`}
+                                    >
+                                        <Zap className="w-4 h-4" /> Quiz
                                     </button>
                                     <button
                                         onClick={() => setView('curriculum')}

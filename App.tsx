@@ -1,26 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AuthPage } from './src/pages/AuthPage';
 import { LandingPage } from './src/pages/LandingPage';
-import { Dashboard } from './src/pages/Dashboard'; // Updated Component
+import { Dashboard } from './src/pages/Dashboard';
 import { SettingsPage } from './src/pages/SettingsPage';
 import UploadPage from './src/pages/UploadPage';
 import CurriculumPage from './src/pages/CurriculumPage';
-import { QuizView } from './src/pages/QuizView'; // [NEW] Import QuizView
+import { QuizPage } from './src/pages/QuizPage';
+import { QuizView } from './src/pages/QuizView';
 import { Header } from './src/components/common/Header';
 import { Footer } from './src/components/common/Footer';
 import { auth } from './src/firebase';
 import { CurriculumItem } from './src/types';
 import { listDocuments } from './src/api';
 
-// [UPDATE] Extended view type to include 'quiz'
-type ViewState = 'landing' | 'auth' | 'dashboard' | 'settings' | 'upload' | 'curriculum' | 'quiz';
+type ViewState = 'landing' | 'auth' | 'dashboard' | 'settings' | 'upload' | 'curriculum' | 'quiz-page' | 'quiz';
 
 export default function App() {
   const [view, setView] = useState<ViewState>('landing');
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // [NEW] State to track which document is being quizzed
   const [quizDocId, setQuizDocId] = useState<string | null>(null);
 
   // Curriculum Data State
@@ -61,7 +60,7 @@ export default function App() {
 
   const handleUploadComplete = async () => {
     await refreshDocuments();
-    setView('dashboard'); // Redirect to dashboard after upload
+    setView('dashboard');
   };
 
   if (loading) {
@@ -74,24 +73,26 @@ export default function App() {
 
   // Route Protection Logic
   let safeView = view;
-  if (!user && (view === 'dashboard' || view === 'settings' || view === 'upload' || view === 'curriculum' || view === 'quiz')) {
+  if (!user && (view === 'dashboard' || view === 'settings' || view === 'upload' || view === 'curriculum' || view === 'quiz-page' || view === 'quiz')) {
     safeView = 'landing';
   } else if (user && view === 'landing') {
-    safeView = 'dashboard'; // Auto-redirect logged-in users to dashboard
+    safeView = 'dashboard';
   } else if (user && view === 'auth') {
     safeView = 'dashboard';
   }
 
+  // Header and footer hidden during quiz session (full-screen) and auth
+  const showChrome = safeView !== 'auth' && safeView !== 'quiz';
+
   return (
     <div className="min-h-screen bg-black text-white font-sans flex flex-col">
-      {/* Header is hidden on Auth and Quiz views for immersion */}
-      {safeView !== 'auth' && safeView !== 'quiz' && (
+      {showChrome && (
         <Header
           onLoginClick={() => setView('auth')}
           onSignupClick={() => setView('auth')}
           userEmail={user?.email}
           onLogout={handleLogout}
-          currentView={safeView}
+          currentView={safeView as any}
           setView={(v) => setView(v as ViewState)}
           user={user}
         />
@@ -111,7 +112,7 @@ export default function App() {
         {safeView === 'dashboard' && (
           <Dashboard
             setView={(v) => setView(v as ViewState)}
-            setQuizDocId={setQuizDocId} // Pass setter to Dashboard
+            setQuizDocId={setQuizDocId}
             itemsError={itemsError}
           />
         )}
@@ -128,7 +129,17 @@ export default function App() {
           />
         )}
 
-        {/* [NEW] Quiz View Route */}
+        {/* Quiz Page (Assessment Center) */}
+        {safeView === 'quiz-page' && user && (
+          <QuizPage
+            onStartQuiz={(docId, mode) => {
+              setQuizDocId(docId);
+              setView('quiz');
+            }}
+          />
+        )}
+
+        {/* Quiz Session (full-screen, no header/footer) */}
         {safeView === 'quiz' && user && (
           <QuizView
             docId={quizDocId}

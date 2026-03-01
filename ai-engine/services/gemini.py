@@ -4,20 +4,27 @@ import os
 import json
 import logging
 from typing import List, Dict
+from fastembed import TextEmbedding
 
 logger = logging.getLogger("alp")
 
-# Initialize the Client
-# The new SDK automatically looks for GEMINI_API_KEY or GOOGLE_API_KEY.
-# We explicitly pass it to be safe.
+# Initialize Gemini Client
 api_key = os.getenv("GEMINI_API_KEY")
 client = None
 
 if not api_key:
     logger.warning("GOOGLE_API_KEY not found. AI features will fail.")
 else:
-    # [FIX] Strip potential whitespace from .env to prevent 400 errors
     client = genai.Client(api_key=api_key.strip())
+
+# Initialize FastEmbed model (Local CPU embeddings)
+# BAAI/bge-base-en-v1.5 produces 768-dimensional vectors
+try:
+    embedding_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
+    logger.info("FastEmbed local model initialized (768 dims).")
+except Exception as e:
+    logger.error(f"Failed to initialize FastEmbed: {e}")
+    embedding_model = None
 
 # Robust model fallback list
 MODELS_FALLBACK = [
@@ -27,9 +34,6 @@ MODELS_FALLBACK = [
     "gemini-2.0-flash-lite",
     "gemini-pro-latest"
 ]
-
-
-
 
 class GeminiService:
     @staticmethod
@@ -91,15 +95,12 @@ class GeminiService:
 
             except Exception as e:
                 last_exception = e
-                # If it's a 429 (quota) or 404 (model not found), try the next one
                 error_msg = str(e).upper()
                 if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg or "NOT_FOUND" in error_msg or "404" in error_msg:
                     logger.warning(f"Model {model_id} failed with {e}. Trying fallback...")
                     continue
                 else:
-                    # For other errors, log and potentially stop
                     logger.error(f"Gemini Quiz Generation Failed on {model_id}: {e}")
-                    # We continue to next model just in case it's model-specific
                     continue
 
         logger.error(f"All Gemini models failed. Last error: {last_exception}")
@@ -140,3 +141,22 @@ class GeminiService:
         
         logger.error(f"All Gemini remediation models failed. Last error: {last_exception}")
         return "Unable to generate remediation at this time."
+
+    @staticmethod
+    def generate_embeddings(texts: List[str]) -> List[List[float]]:
+        """
+        Generates embeddings locally using FastEmbed (BAAI/bge-base-en-v1.5).
+        Bypasses Gemini API limits and 404 errors.
+        """
+        if not embedding_model:
+            logger.error("FastEmbed model not initialized.")
+            return [[0.0] * 768 for _ in texts]
+
+        try:
+            # zip results back into a list of floats
+            # FastEmbed's embed returns a generator of numpy arrays
+            embeddings_generator = embedding_model.embed(texts)
+            return [emb.tolist() for emb in embeddings_generator]
+        except Exception as e:
+            logger.error(f"Local embedding generation failed: {e}")
+            return [[0.0] * 768 for _ in texts]
