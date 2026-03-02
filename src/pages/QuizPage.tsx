@@ -196,127 +196,193 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
                     </div>
                 </div>
             ) : selectedMode === 'subject' ? (
-                <div className="max-w-5xl mx-auto animate-in slide-in-from-bottom-4">
+                <div className="max-w-7xl mx-auto animate-in slide-in-from-bottom-4">
                     <div className="flex items-center justify-between mb-10">
                         <button
                             onClick={() => {
                                 setSelectedMode(null);
                                 setSelectedSubjects([]);
                                 setSelectedChapterId(null);
+                                localStorage.removeItem('alp_quiz_doc_id');
+                                localStorage.removeItem('alp_quiz_chapter_id');
                             }}
                             className="flex items-center gap-2 text-gray-500 hover:text-white transition-colors text-xs font-black uppercase tracking-widest"
                         >
                             <X className="w-4 h-4" /> Back to Mode Selection
                         </button>
-                        <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest bg-amber-500/10 px-4 py-1.5 rounded-full border border-amber-500/20">
-                            {selectedSubjects.length} Domains Selected
-                        </span>
                     </div>
 
-                    <div className="grid md:grid-cols-3 gap-8 mb-16">
-                        {/* Domain selection */}
-                        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {subjects.map((subject) => (
-                                <div
-                                    key={subject.id}
-                                    onClick={() => toggleSubject(subject.id)}
-                                    className={`p-6 rounded-[2rem] border transition-all cursor-pointer flex flex-col items-center text-center group ${
-                                        selectedSubjects.includes(subject.id)
-                                            ? 'bg-amber-500 border-amber-500 text-black shadow-2xl shadow-amber-500/20'
-                                            : 'bg-[#111] border-white/5 text-white hover:border-white/10'
-                                    }`}
-                                >
-                                    <div
-                                        className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 border transition-all ${
-                                            selectedSubjects.includes(subject.id)
-                                                ? 'bg-black/10 border-black/20'
-                                                : 'bg-white/5 border-white/10 group-hover:border-amber-500/30'
-                                        }`}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                        {/* 1. Subject Selection */}
+                        <div className="lg:col-span-3 space-y-4">
+                            <h4 className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[8px]">1</span>
+                                Select Subject
+                            </h4>
+                            <div className="space-y-3">
+                                {subjects.map((subject) => (
+                                    <button
+                                        key={subject.id}
+                                        onClick={() => toggleSubject(subject.id)}
+                                        className={`w-full p-4 rounded-2xl border transition-all flex items-center gap-4 group ${selectedSubjects.includes(subject.id)
+                                                ? 'bg-amber-500 border-amber-500 text-black'
+                                                : 'bg-white/5 border-white/10 text-white hover:border-white/20'
+                                            }`}
                                     >
-                                        <div className={selectedSubjects.includes(subject.id) ? 'text-black' : 'text-amber-500'}>
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${selectedSubjects.includes(subject.id) ? 'bg-black/10 border-black/10' : 'bg-white/5 border-white/10'
+                                            }`}>
                                             {subjectIcons[subject.name] || defaultIcon}
                                         </div>
-                                    </div>
-                                    <h4 className="font-black text-base uppercase tracking-tight">{subject.name}</h4>
-                                    <p className="text-[10px] mt-2 opacity-60 font-bold uppercase tracking-widest">
-                                        {subject.docIds.length} {subject.docIds.length === 1 ? 'module' : 'modules'}
-                                    </p>
-                                </div>
-                            ))}
+                                        <div className="text-left">
+                                            <p className="font-black text-xs uppercase tracking-tight">{subject.name}</p>
+                                            <p className={`text-[9px] font-bold uppercase tracking-widest ${selectedSubjects.includes(subject.id) ? 'text-black/60' : 'text-gray-600'}`}>
+                                                {subject.docIds.length} Modules
+                                            </p>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
 
-                        {/* Chapter selection for first selected subject */}
-                        <div className="bg-[#111] border border-white/5 rounded-3xl p-6">
-                            <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">
-                                Target Chapter (Optional)
+                        {/* 2. Topic (Document) Selection */}
+                        <div className="lg:col-span-4 space-y-4">
+                            <h4 className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[8px]">2</span>
+                                Select Module / Topic
                             </h4>
-                            {selectedSubjects.length === 0 ? (
-                                <p className="text-gray-600 text-xs">
-                                    Select a domain to view its chapters and isolate a specific unit for assessment.
-                                </p>
-                            ) : (
-                                (() => {
-                                    const selectedSubject = subjects.find(
-                                        (s) => s.id === selectedSubjects[0]
-                                    );
-                                    const subjectName = selectedSubject?.name;
-                                    const matchingDoc = documents.find(
-                                        (d) => d.subject === subjectName && d.status === 'Active'
-                                    );
-                                    const chapters = matchingDoc?.chapters || [];
-
-                                    if (!matchingDoc || chapters.length === 0) {
-                                        return (
-                                            <p className="text-gray-600 text-xs">
-                                                No chapter metadata found for this domain. You can still run a full
-                                                subject-wise quiz.
-                                            </p>
-                                        );
-                                    }
-
-                                    return (
-                                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                                            {chapters.map((chapter) => (
+                            <div className="space-y-3">
+                                {selectedSubjects.length === 0 ? (
+                                    <div className="h-48 border border-white/5 bg-white/[0.02] rounded-3xl flex items-center justify-center border-dashed">
+                                        <p className="text-[10px] font-black text-gray-700 uppercase tracking-widest">Awaiting Domain Selection</p>
+                                    </div>
+                                ) : (
+                                    documents
+                                        .filter(d => d.subject === subjects.find(s => s.id === selectedSubjects[0])?.name && d.status === 'Active')
+                                        .map((doc) => {
+                                            const isSelected = localStorage.getItem('alp_quiz_doc_id') === doc.id;
+                                            return (
                                                 <button
-                                                    key={chapter.id}
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setSelectedChapterId(
-                                                            selectedChapterId === chapter.id ? null : chapter.id
-                                                        )
-                                                    }
-                                                    className={`w-full text-left text-xs px-3 py-2 rounded-xl border transition-all ${
-                                                        selectedChapterId === chapter.id
-                                                            ? 'bg-amber-500 text-black border-amber-500'
-                                                            : 'bg-white/5 text-gray-300 border-white/10 hover:border-amber-500/40'
-                                                    }`}
+                                                    key={doc.id}
+                                                    onClick={() => {
+                                                        localStorage.setItem('alp_quiz_doc_id', doc.id);
+                                                        localStorage.removeItem('alp_quiz_chapter_id');
+                                                        setSelectedChapterId(null);
+                                                        // Force re-render
+                                                        setDocuments([...documents]);
+                                                    }}
+                                                    className={`w-full p-4 rounded-2xl border transition-all flex items-start gap-4 ${isSelected
+                                                            ? 'bg-white/10 border-amber-500/50 text-white'
+                                                            : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20'
+                                                        }`}
                                                 >
-                                                    <span className="block font-bold truncate">
-                                                        {chapter.title || `Chapter ${chapter.id}`}
-                                                    </span>
-                                                    {chapter.concepts?.length > 0 && (
-                                                        <span className="block text-[10px] text-gray-500 truncate">
-                                                            {chapter.concepts.slice(0, 2).join(' • ')}
-                                                        </span>
-                                                    )}
+                                                    <div className={`mt-1 w-2 h-2 rounded-full ${isSelected ? 'bg-amber-500' : 'bg-gray-800'}`} />
+                                                    <div className="text-left flex-grow truncate">
+                                                        <p className="font-black text-xs uppercase tracking-tight truncate">{doc.topic || doc.fileName}</p>
+                                                        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-600 mt-1">
+                                                            {doc.chapters.length} Chapters Extracted
+                                                        </p>
+                                                    </div>
                                                 </button>
-                                            ))}
-                                        </div>
-                                    );
-                                })()
-                            )}
+                                            );
+                                        })
+                                )}
+                            </div>
+                        </div>
+
+                        {/* 3. Chapter Selection */}
+                        <div className="lg:col-span-5 space-y-4">
+                            <h4 className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[8px]">3</span>
+                                Target Chapter (Diagnostic)
+                            </h4>
+                            <div className="bg-[#111] border border-white/5 rounded-[2.5rem] p-8">
+                                {!localStorage.getItem('alp_quiz_doc_id') ? (
+                                    <div className="py-12 text-center">
+                                        <Archive className="w-10 h-10 text-gray-800 mx-auto mb-4" />
+                                        <p className="text-[10px] font-black text-gray-700 uppercase tracking-widest">Select a module to view its chapters</p>
+                                    </div>
+                                ) : (
+                                    (() => {
+                                        const docId = localStorage.getItem('alp_quiz_doc_id');
+                                        const doc = documents.find(d => d.id === docId);
+                                        const chapters = doc?.chapters || [];
+
+                                        if (chapters.length === 0) {
+                                            return (
+                                                <div className="py-12 text-center">
+                                                    <p className="text-[10px] font-black text-gray-700 uppercase tracking-widest">No detailed chapter analysis available</p>
+                                                </div>
+                                            );
+                                        }
+
+                                        return (
+                                            <>
+                                                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-6">
+                                                    Isolate a specific unit or take the full module simulation.
+                                                </p>
+                                                <div className="grid grid-cols-1 gap-3 max-h-[350px] overflow-y-auto pr-2 scrollbar-thin">
+                                                    <button
+                                                        onClick={() => {
+                                                            localStorage.removeItem('alp_quiz_chapter_id');
+                                                            setSelectedChapterId(null);
+                                                        }}
+                                                        className={`w-full text-left p-4 rounded-2xl border transition-all ${!selectedChapterId
+                                                                ? 'bg-amber-500 text-black border-amber-500'
+                                                                : 'bg-white/5 border-white/5 text-white hover:border-white/20'
+                                                            }`}
+                                                    >
+                                                        <span className="block font-black text-xs uppercase tracking-tight">Full Module Assessment</span>
+                                                        <span className={`block text-[9px] font-bold uppercase tracking-widest mt-1 ${!selectedChapterId ? 'text-black/60' : 'text-gray-600'}`}>
+                                                            Includes all chapters below
+                                                        </span>
+                                                    </button>
+                                                    <div className="h-px bg-white/5 my-2" />
+                                                    {chapters.map((chapter) => (
+                                                        <button
+                                                            key={chapter.id}
+                                                            onClick={() => {
+                                                                localStorage.setItem('alp_quiz_chapter_id', chapter.id);
+                                                                setSelectedChapterId(chapter.id);
+                                                            }}
+                                                            className={`w-full text-left p-4 rounded-2xl border transition-all ${selectedChapterId === chapter.id
+                                                                    ? 'bg-amber-500/20 border-amber-500 text-amber-500'
+                                                                    : 'bg-white/5 border-white/5 text-gray-400 hover:border-white/20'
+                                                                }`}
+                                                        >
+                                                            <div className="flex justify-between items-start mb-1">
+                                                                <span className="block font-black text-xs uppercase tracking-tight truncate">{chapter.title || `Chapter ${chapter.id}`}</span>
+                                                                {selectedChapterId === chapter.id && <CheckCircle2 className="w-3.5 h-3.5" />}
+                                                            </div>
+                                                            <div className="flex flex-wrap gap-1 mt-2">
+                                                                {chapter.concepts.slice(0, 3).map((c, i) => (
+                                                                    <span key={i} className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md ${selectedChapterId === chapter.id ? 'bg-amber-500/10 text-amber-500/70' : 'bg-black/20 text-gray-600'}`}>
+                                                                        {c}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        );
+                                    })()
+                                )}
+                            </div>
                         </div>
                     </div>
 
-                    <div className="text-center">
+                    <div className="mt-16 text-center">
                         <button
-                            disabled={selectedSubjects.length === 0}
+                            disabled={!localStorage.getItem('alp_quiz_doc_id')}
                             onClick={handleInitialize}
-                            className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-800 disabled:opacity-50 text-black px-20 py-6 rounded-[2.5rem] font-black text-2xl transition-all shadow-2xl shadow-amber-500/20 flex items-center justify-center gap-4 mx-auto group active:scale-95"
+                            className="bg-amber-500 hover:bg-amber-600 disabled:bg-white/5 disabled:text-gray-800 disabled:border-white/5 text-black px-16 py-6 rounded-3xl font-black text-xl transition-all shadow-2xl shadow-amber-500/20 flex items-center justify-center gap-4 mx-auto group active:scale-95 border border-amber-400/20"
                         >
-                            {selectedChapterId ? 'Initialize Chapter Loop' : 'Initialize Subject Loop'}
-                            <ChevronRight className="w-8 h-8 group-hover:translate-x-3 transition-transform" />
+                            {selectedChapterId ? 'Initialize Unit Protocol' : 'Initialize Module Protocol'}
+                            <ChevronRight className="w-6 h-6 group-hover:translate-x-2 transition-transform" />
                         </button>
+                        <p className="mt-6 text-[10px] font-black text-gray-700 uppercase tracking-[0.2em]">
+                            End-to-end knowledge validation sequence
+                        </p>
                     </div>
                 </div>
             ) : (

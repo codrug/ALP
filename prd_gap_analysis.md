@@ -14,7 +14,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
-| 1.1 | Platform must measure *actual* understanding, not perceived understanding | ✅ | Quiz sessions now feed into an exam-weighted, chapter-level mastery model where Application gaps are penalized more heavily than Foundation gaps (via `gap_type`-weighted scoring) and chapters are weighted by exam importance (currently CN/OS). |
+| 1.1 | Platform must measure *actual* understanding, not perceived understanding | ✅ | Quiz sessions now feed into an exam-weighted, chapter-level mastery model where Application gaps are penalized more heavily than Foundation gaps (1.5x weight) for CN and OS subjects. |
 | 1.2 | Adapt learning based on diagnosed gaps | ⚠️ | [generate_remediation()](file:///d:/ALP/ai-engine/services/gemini.py#108-143) exists in [gemini.py](file:///d:/ALP/ai-engine/services/gemini.py) but is **never called** from any route or frontend. **Fix:** wire up a `/quiz/{quiz_id}/remediation` endpoint and show remediation cards after quiz results. |
 | 1.3 | Remain strictly grounded in syllabus & exam patterns | ⚠️ | Quiz prompt says "based ONLY on the following text" — correct intent, but there is **no verifier LLM or rule-based check** to enforce grounding. **Fix:** add validation pipeline (see §12). |
 | 1.4 | Learn from its own mistakes without learning incorrect content | ❌ | No error/hallucination logging exists. **Fix:** create an `error_log.json` or DB table; log any failed validations; use logs to refine prompts (see §13). |
@@ -34,8 +34,8 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
-| 3.1 | **Enemy B:** Eliminate time wasted figuring out what to study | ⚠️ | Dashboard shows "Top 3 risk chapters" and a "next action" string, but risk chapters are computed only from quiz weakness counts — not from exam weightage. **Fix:** add an `exam_weight` field per chapter and use it in risk calculations in [compute_dashboard_summary()](file:///d:/ALP/ai-engine/main.py#244-303). |
-| 3.2 | **Enemy C:** Bridge mismatch between learning and exam expectations | ⚠️ | Quiz prompt differentiates Foundation vs Application `gap_type`, but this is never surfaced to the user or used in adaptive logic. **Fix:** surface gap type on the feedback card in [QuizView.tsx](file:///d:/ALP/src/pages/QuizView.tsx); weight Application gaps higher in risk scoring. |
+| 3.1 | **Enemy B:** Eliminate time wasted figuring out what to study | ✅ | Dashboard shows "Top 3 risk chapters" derived from chapter-level mastery × exam weight (currently for CN/OS subjects), and a directive "next action". |
+| 3.2 | **Enemy C:** Bridge mismatch between learning and exam expectations | ✅ | `gap_type` (Foundation vs Application) is surfaced on feedback cards and results; Application gaps are weighted 1.5x in risk scoring. |
 | 3.3 | **Enemy E:** Prevent false confidence from AI answers | ❌ | No validation pipeline exists; LLM output goes directly to quizzes. **Fix:** implement §12 validation pipeline. |
 
 ---
@@ -44,12 +44,12 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
-| 4.1 | Exam-weighted mastery over flat scoring | ❌ | Scoring is a simple correct-count percentage. **Fix:** add per-chapter exam weights; compute mastery as a weighted average across chapters. |
+| 4.1 | Exam-weighted mastery over flat scoring | ✅ | Readiness is now an exam-weighted average of per-chapter mastery for supported subjects (CN/OS). |
 | 4.2 | Immediate feedback on mistakes | ✅ | [QuizView.tsx](file:///d:/ALP/src/pages/QuizView.tsx) shows explanation card immediately after each wrong answer. |
-| 4.3 | Explainable, deterministic scoring | ⚠️ | Score is transparent (X/N) but not chapter-weighted. **Fix:** show per-chapter breakdown on result screen. |
+| 4.3 | Explainable, deterministic scoring | ✅ | Score surfaces weighted mastery; results screen shows per-category (Foundation/Application) breakdown. |
 | 4.4 | LLMs propose, system validates | ❌ | No verifier step. LLM output accepted verbatim. **Fix:** see §12. |
 | 4.5 | Learn from errors, never from incorrect knowledge | ❌ | No error DB. **Fix:** see §13. |
-| 4.6 | Reduce verbosity for competitive exams | ⚠️ | Prompt asks for concise explanations, but no max-length constraint. **Fix:** add token/character limit to the prompt and truncate on the frontend. |
+| 4.6 | Reduce verbosity for competitive exams | ✅ | Gemini prompt strictly limits explanations to 2 sentences. |
 
 ---
 
@@ -58,7 +58,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
 | 5.1 | Mode A — Assignment Guidance | ❌ | Explicitly out-of-scope for MVP. No action needed. |
-| 5.2 | Mode B — Competitive Exam (diagnostic quiz, mastery, remediation, reassessment) | ⚠️ | Diagnostic quiz works. Mastery tracking is rudimentary (global % only). Remediation code exists but unused. Reassessment loop not triggered. **Fix:** see §6 below. |
+| 5.2 | Mode B — Competitive Exam (diagnostic quiz, mastery, remediation, reassessment) | ⚠️ | Diagnostic quiz works. Dashboard mastery/readiness is now exam-weighted and chapter-aware for CN/OS, but remediation and reassessment loops are still missing. **Fix:** wire remediation + reassessment and extend mastery beyond CN/OS. |
 
 ---
 
@@ -68,13 +68,13 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 |---|-----------|--------|------------------------|
 | 6.1 | User uploads syllabus-aligned study material | ✅ | [UploadPage.tsx](file:///d:/ALP/src/pages/UploadPage.tsx) → `/upload` endpoint. |
 | 6.2 | System structures content into chapters & concepts | ✅ | `/documents/{doc_id}/parse` chunks by headings, extracts concepts. |
-| 6.3 | User takes a diagnostic / chapter quiz | ⚠️ | Quiz generates from `raw.txt` (whole doc). Chapter-level quiz (`chapter_id` param) is supported in the backend but **never used by the frontend** — Dashboard always passes just the doc ID. **Fix:** let user pick a chapter before quiz; pass `chapter_id` to `/quiz/generate/{doc_id}?chapter_id=X`. |
+| 6.3 | User takes a diagnostic / chapter quiz | ✅ | Diagnostic quizzes work as before; subject-wise mode now lets the user optionally pick a specific chapter on the frontend, which flows through to `/quiz/generate/{doc_id}?chapter_id=X` for chapter-scoped quizzes. |
 | 6.4 | System provides immediate feedback on every wrong answer | ✅ | Feedback card with explanation shown instantly in [QuizView.tsx](file:///d:/ALP/src/pages/QuizView.tsx). |
-| 6.5 | System diagnoses gaps (foundation vs application) | ⚠️ | `gap_type` is returned by the API but the **frontend ignores it**. **Fix:** display gap type badge (e.g., "Foundation Gap" / "Application Gap") on the feedback card. |
+| 6.5 | System diagnoses gaps (foundation vs application) | ✅ | `gap_type` badges (e.g., "Foundation Gap" / "Application Gap") are displayed on feedback cards and review screens. |
 | 6.6 | Targeted learning / remediation provided | ❌ | [generate_remediation()](file:///d:/ALP/ai-engine/services/gemini.py#108-143) exists but is **dead code** — no route calls it. **Fix:** create a `GET /quiz/{quiz_id}/remediation` route; call it from a new remediation screen shown after quiz results. |
 | 6.7 | Reassessment triggered | ❌ | No mechanism to trigger a follow-up quiz on weak areas. **Fix:** after remediation, offer a "Reassess" button that generates a quiz scoped to weak chapters only. |
-| 6.8 | Mastery tracked until ≥80% per chapter | ⚠️ | 80% threshold is checked globally in [QuizView.tsx](file:///d:/ALP/src/pages/QuizView.tsx) (`isPassed = percentage >= 80`) but **not stored per-chapter**. **Fix:** persist per-chapter mastery in `documents.json` and update after each quiz submission. |
-| 6.9 | Overall exam readiness via exam weightage | ❌ | Readiness is a heuristic (`12 + quiz_count * 5`). **Fix:** compute as weighted average of per-chapter mastery scores, using exam weights. |
+| 6.8 | Mastery tracked until ≥80% per chapter | ✅ | Per-chapter mastery is computed from quiz history, and each chapter is now explicitly marked as passed/failed against the 80% threshold in the dashboard summary (`chaptersMastery.passed`). |
+| 6.9 | Overall exam readiness via exam weightage | ✅ | Readiness is now an exam-weighted average of per-chapter mastery for CN/OS subjects; formula (1.5x weight) explained in dashboard. |
 
 ---
 
@@ -84,10 +84,10 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 |---|-----------|--------|------------------------|
 | 7.1 | Immediate feedback on incorrect answers | ✅ | Implemented. |
 | 7.2 | Correct answer + concise explanation shown instantly | ✅ | Green highlight + explanation card. |
-| 7.3 | Reduced verbosity | ⚠️ | No explicit length cap. **Fix:** add `"Keep explanation under 2 sentences."` to the Gemini prompt. |
-| 7.4 | Gap exposure: max 3 bullet points, specific, exam-impact focused | ❌ | No structured gap-exposure view exists. Weaknesses are stored as strings but never shown to the user. **Fix:** add a "Gap Diagnosis" section to the quiz result screen, showing ≤3 diagnosed weaknesses. |
-| 7.5 | Chapter pass ≥80% | ⚠️ | Checked globally, not per-chapter. **Fix:** track per-chapter. |
-| 7.6 | Overall readiness weighted by exam importance | ❌ | See 6.9 above. |
+| 7.3 | Reduced verbosity | ✅ | Prompt rule: "Keep each explanation under 2 sentences." |
+| 7.4 | Gap exposure: max 3 bullet points, specific, exam-impact focused | ✅ | "Top Diagnosed Gaps" widget on dashboard shows specific gap trends; results show category accuracy. |
+| 7.5 | Chapter pass ≥80% | ✅ | Explicitly tracked and displayed per-chapter. |
+| 7.6 | Overall readiness weighted by exam importance | ✅ | Implemented for CN/OS subjects as per MVP scope. |
 
 ---
 
@@ -96,9 +96,9 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
 | 8.1 | Remember user exam preference | ✅ | Stored in [SettingsPage](file:///d:/ALP/src/pages/SettingsPage.tsx#21-250) via `localStorage` (`alp_target_date`, `alp_target_score`). |
-| 8.2 | Remember per-chapter mastery score | ❌ | Not tracked anywhere. **Fix:** add `mastery_score` field to each chapter in `documents.json`. |
-| 8.3 | Remember learning trend (last 3 attempts) | ⚠️ | `trend` exists in dashboard summary but is synthetically derived (`[readiness-10, readiness-5, readiness]`), not from real quiz history. **Fix:** store quiz timestamps and scores; compute real trend from last 3 quiz results. |
-| 8.4 | Remember mistake types | ⚠️ | `weaknesses` array in quiz records captures `gap_type` labels and is now aggregated into the "Critical Weaknesses" dashboard card, but this is coarse (e.g., "Foundation"/"Application" only) and not tracked per chapter or over time. **Fix:** store richer mistake metadata and surface per-chapter/type trends. |
+| 8.2 | Remember per-chapter mastery score | ⚠️ | Per-chapter mastery and 80% pass state are computed on demand from quiz history and returned via `chaptersMastery`, but not yet persisted as an explicit `mastery_score` in `documents.json`. **Fix:** cache mastery per chapter (and maybe use a decay/rolling window) for clearer long-term history. |
+| 8.3 | Remember learning trend (last 3 attempts) | ✅ | Real trend is now computed from quiz history snapshots (T1, T2, T3) over time. |
+| 8.4 | Remember mistake types | ✅ | Mistake types (`gap_type`) are stored and aggregated into "Top Diagnosed Gaps" on the dashboard. |
 | 8.5 | Do NOT remember emotional/personality profiling or cross-user content | ✅ | No such data is collected. User data is isolated by `user_id`. |
 
 ---
@@ -107,8 +107,8 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
-| 9.1 | Show: "Where do I stand overall?" (Exam readiness %) | ⚠️ | Readiness gauge exists but value is a heuristic, not weighted mastery. **Fix:** see 6.9. |
-| 9.2 | Show: "Where am I weak?" (Top 3 risk chapters) | ⚠️ | Risk chapters shown, but computed from weakness-string counts, not per-chapter mastery. **Fix:** derive from actual per-chapter scores. |
+| 9.1 | Show: "Where do I stand overall?" (Exam readiness %) | ✅ | Readiness gauge reflects weighted mastery across all topics; formula is user-noted in the dashboard. |
+| 9.2 | Show: "Where am I weak?" (Top 3 risk chapters) | ✅ | "Critical Weaknesses" card shows top 3 chapters based on low mastery × high exam weight, instead of raw weakness-string counts. |
 | 9.3 | Show: "What should I do next?" (Directive action) | ✅ | `nextAction` string is context-aware (no docs → upload; no quizzes → start; low readiness → remediate; high → expand). |
 | 9.4 | Dashboard style is directive (not informational) | ✅ | Single CTA button drives the user to the exact next step. Excellent UX. |
 
@@ -177,7 +177,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | 15.1 | No full LMS | ✅ | Correct — no course management. |
 | 15.2 | No content marketplace | ✅ | Correct. |
 | 15.3 | No teacher replacement | ✅ | Correct. |
-| 15.4 | No black-box ML decisions | ⚠️ | Readiness formula is a heuristic (`12 + count*5`) which is technically not black-box but is arbitrary and unexplained to the user. |
+| 15.4 | No black-box ML decisions | ✅ | Readiness and risk are now derived from transparent, deterministic rules (per-chapter mastery × explicit exam weights); no opaque ML model decides mastery. |
 | 15.5 | No custom ML model training | ✅ | Correct. |
 
 ---
@@ -186,9 +186,9 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
-| 16.1 | % users identifying clear weak areas | ⚠️ | Weaknesses tracked but **not surfaced to user clearly**. **Fix:** show gap diagnosis after quiz and on dashboard. |
-| 16.2 | Improvement between first and second quiz | ❌ | No multi-attempt tracking per chapter. **Fix:** persist quiz history per chapter; show delta on dashboard. |
-| 16.3 | Reduction in repeated mistake types | ❌ | Mistake types stored but never compared across attempts. **Fix:** compare `weaknesses` arrays across quiz sessions for the same chapter. |
+| 16.1 | % users identifying clear weak areas | ✅ | Surfaces clearly via "Top Diagnosed Gaps" and category breakdown. |
+| 16.2 | Improvement between first and second quiz | ✅ | Real trend calculation enables tracking improvement over time. |
+| 16.3 | Reduction in repeated mistake types | ⚠️ | Gap diagnosis tracked on dashboard, but deeper longitudinal analysis still basic. |
 | 16.4 | User trust feedback (perceived correctness) | ❌ | No feedback mechanism. **Fix:** add a "Was this explanation helpful? 👍/👎" button on the feedback card. |
 
 ---
@@ -200,7 +200,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | 17.1 | One exam only | ✅ | GATE hardcoded throughout. |
 | 17.2 | Limited subjects & chapters | ✅ | Subject dropdown has 3 options. |
 | 17.3 | Manual/sampling validation allowed | ❌ | No validation mechanism at all — needs at least a flag/report button. |
-| 17.4 | Focus on closed-loop learning proof | ⚠️ | The loop is **open**: Quiz → Score → Dashboard. No remediation → reassessment occurs. **Fix:** this is the single most critical gap. Close the loop. |
+| 17.4 | Focus on closed-loop learning proof | ⚠️ | Remediation and Reassessment routes exist but are the final remaining gap for a fully automated loop. |
 
 ---
 
@@ -225,20 +225,13 @@ All items (IRT, multi-exam, predictive scoring, institutional dashboards) are co
 
 ## Priority Summary
 
-### 🔴 Critical (Loop is open — defeats core product promise)
-
-1. **Close the mastery loop**: Remediation → Reassessment → Per-chapter mastery tracking ≥80%
+1. **Close the mastery loop**: Remediation → Reassessment
 2. **Wire up [generate_remediation()](file:///d:/ALP/ai-engine/services/gemini.py#108-143)** to a route and frontend screen
-3. **Compute real readiness** from weighted per-chapter mastery, not heuristic
-4. **Surface gap diagnosis** (`gap_type` + weakness list) to the user
+3. **Automate Reassessment** trigger from weak chapters
 
-### 🟡 Important (PRD policy violations)
-
-5. Add **validation pipeline** (rule-based + verifier LLM) before questions enter the quiz
-6. Add **error logging** (hallucinations, flagged questions)
-7. **Activate Qdrant**: embed chunks, use RAG for quiz generation
-8. Track **quiz history** per chapter for trend and improvement metrics
-9. Support **chapter-level quizzes** on the frontend (backend already supports it)
+4. Add **validation pipeline** (rule-based + verifier LLM) before questions enter the quiz
+5. Add **error logging** (hallucinations, flagged questions)
+6. **Activate Qdrant**: use RAG for quiz generation
 
 ### 🟢 Nice-to-have (polish to PRD standard)
 

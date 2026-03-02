@@ -52,6 +52,7 @@ logger = logging.getLogger("alp")
 # commented out so they do NOT silently fall back.
 SUBJECT_WEIGHTS: dict[str, float] = {
     # Core GATE CSE-style subjects (currently limited to CN + OS)
+    # Core GATE CSE-style subjects (currently limited to CN + OS)
     # "Programming and Data Structures": 0.14,
     # "Data Structures": 0.14,
     # "Algorithms": 0.12,
@@ -65,7 +66,9 @@ SUBJECT_WEIGHTS: dict[str, float] = {
     # "COA": 0.08,
     # "Digital Logic": 0.06,
     # "Compiler Design": 0.05,
-    # No generic fallback: unsupported subjects are simply not included
+    # "General Aptitude": 0.15,
+    # "Engineering Mathematics": 0.13,
+    # "Discrete Mathematics": 0.13,
 }
 
 # Allow CORS for frontend
@@ -184,6 +187,9 @@ def is_heading(line: str, style: str) -> bool:
         return True
     if HEADING_REGEX.match(line):
         return True
+    # Looser check for common syllabus headers: "1. Introduction", "A. Background", etc.
+    if re.match(r"^\s*(\d+|[A-Z])[\.\)]\s+[A-Z].+", line):
+        return True
     if ALL_CAPS_REGEX.match(line) and len(line) <= 80:
         return True
     return False
@@ -208,7 +214,7 @@ def derive_concepts(title: str, lines: list[str]) -> list[str]:
     return [fallback] if fallback else ["Core concepts"]
 
 
-def chunk_lines(lines: list[dict]) -> list[dict]:
+def chunk_lines(lines: list[dict], fallback_title: str = "Untitled Section") -> list[dict]:
     chunks: list[dict] = []
     current: Optional[dict] = None
 
@@ -229,8 +235,10 @@ def chunk_lines(lines: list[dict]) -> list[dict]:
             continue
 
         if current is None:
+            # Use the first line or fallback as the initial chunk title
+            initial_title = text if text else fallback_title
             current = {
-                "title": "Untitled Section",
+                "title": initial_title,
                 "lines": [],
                 "page_start": page,
                 "page_end": page,
@@ -370,6 +378,9 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
         weighted_sum += mastery * weight
         weight_sum += weight
 
+        # Whether this chapter has reached the 80% mastery threshold
+        passed = mastery >= 80.0
+
         mastered_chapters.append(
             {
                 "subject": info["subject"],
@@ -377,6 +388,7 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
                 "chapter_title": info["chapter_title"],
                 "mastery": mastery,
                 "exam_weight": weight,
+                "passed": passed,
             }
         )
 
@@ -441,17 +453,88 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
         next_action = "Strong command detected. Expand your syllabus coverage or re-validate with a diagnostic."
         next_action_type = "expand"
 
+    # 6. Compute Real Trend (last 3 readiness-snapshots over time)
+    # We sort quizzes by creation date and compute a rolling readiness
+    sorted_quizzes = sorted(
+        [q for q in quizzes.values() if q.get("created_at")],
+        key=lambda q: q["created_at"]
+    )
+    
+    trend = []
+    if sorted_quizzes:
+        # To compute a real trend, we'd ideally have snapshots. 
+        # For MVP, we'll compute cumulative readiness at 3 points in time: 
+        # 33% through history, 66% through history, and 100% (now).
+        def readiness_at_step(limit_idx):
+            sub_quizzes = sorted_quizzes[:limit_idx+1]
+            temp_stats = {}
+            for q in sub_quizzes:
+                d_id = q.get("doc_id")
+                if d_id not in docs_by_id: continue
+                s = docs_by_id[d_id].get("subject", "")
+                w_base = SUBJECT_WEIGHTS.get(s)
+                if w_base is None: continue
+                
+                c_id_raw = q.get("chapter_id")
+                c_key = str(c_id_raw) if c_id_raw is not None else "ALL"
+                
+                tq = q.get("total_questions", 1)
+                sc = q.get("score", 0)
+                
+                # Weighted mastery for this session
+                ws = q.get("weaknesses", [])
+                fw = sum(1 for w in ws if str(w).lower() == "foundation")
+                aw = sum(1 for w in ws if str(w).lower() == "application")
+                ow = len(ws) - fw - aw
+                ew = float(fw) + float(ow) + 1.5 * float(aw)
+                ec = max(0.0, float(tq) - ew)
+                p = max(0.0, min(100.0, (ec / float(tq)) * 100.0))
+                
+                k = (d_id, c_key)
+                if k not in temp_stats:
+                    temp_stats[k] = {"sum": 0.0, "count": 0, "weight": w_base}
+                temp_stats[k]["sum"] += p
+                temp_stats[k]["count"] += 1
+            
+            w_sum = 0.0
+            wt_sum = 0.0
+            for info in temp_stats.values():
+                m = info["sum"] / info["count"]
+                w_sum += m * info["weight"]
+                wt_sum += info["weight"]
+            return int(round(w_sum / wt_sum)) if wt_sum > 0 else 0
+
+        n = len(sorted_quizzes)
+        trend = [
+            readiness_at_step(max(0, n // 3 - 1)),
+            readiness_at_step(max(0, 2 * n // 3 - 1)),
+            readiness
+        ]
+    else:
+        trend = [0, 0, 0]
+
+    # 7. Aggregate Top 3 Weaknesses (Gap Diagnosis)
+    all_weaknesses = []
+    for q in quizzes.values():
+        all_weaknesses.extend(q.get("weaknesses", []))
+    
+    from collections import Counter
+    top_weaknesses_raw = Counter([w for w in all_weaknesses if w != "General"]).most_common(3)
+    top_weaknesses = [w[0] for w in top_weaknesses_raw]
+
     # Collect unique subjects from user docs for frontend
     subjects = list({d.get("subject", "") for d in documents if d.get("subject")})
 
     return {
         "readiness": readiness,
         "riskChapters": risk_chapters,
-        "trend": [readiness - 10, readiness - 5, readiness],
+        "trend": trend,
+        "topWeaknesses": top_weaknesses,
         "nextAction": next_action,
         "nextActionType": next_action_type,
         "subjects": subjects,
         "hasContent": total_quizzes > 0,
+        "chaptersMastery": mastered_chapters,
     }
 
 
@@ -535,6 +618,26 @@ def delete_document(doc_id: str):
 
     documents = [doc for doc in documents if doc.get("id") != doc_id]
     save_documents(documents)
+
+    # --- Qdrant Sync: Delete points for this document ---
+    qdrant_client = getattr(app.state, "qdrant", None)
+    if qdrant_client:
+        from qdrant_client import models
+        try:
+            qdrant_client.delete(
+                collection_name=QDRANT_COLLECTION,
+                points_selector=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="doc_id",
+                            match=models.MatchValue(value=doc_id),
+                        ),
+                    ]
+                ),
+            )
+        except Exception as e:
+            print(f"Warning: Failed to delete Qdrant points for {doc_id}: {e}")
+
     return {"status": "deleted", "id": doc_id}
 
 
@@ -652,7 +755,9 @@ def parse_document(doc_id: str):
     if len(raw_text) < MIN_TEXT_CHARS:
         raise HTTPException(status_code=422, detail="Extracted text is too short or garbled.")
 
-    chunks = chunk_lines(lines)
+    # Pass filename (without ext) as fallback title
+    fallback = file_path.stem.replace("_", " ").title()
+    chunks = chunk_lines(lines, fallback_title=fallback)
     if not chunks:
         raise HTTPException(status_code=422, detail="Unable to detect chapter boundaries.")
 
@@ -688,6 +793,10 @@ def parse_document(doc_id: str):
     document["chapters"] = chapters
     document["raw_text_path"] = str(raw_text_path)
     document["chunks"] = chunk_metadata
+    
+    # Auto-assign topic if missing or generic
+    if not document.get("topic") or document["topic"].lower() in ["none", "all", "untitled"]:
+        document["topic"] = fallback
 
     save_documents(documents)
 

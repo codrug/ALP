@@ -51,6 +51,15 @@ export interface DashboardSummaryDto {
     nextActionType: 'upload' | 'diagnostic' | 'subject' | 'expand';
     subjects: string[];
     hasContent: boolean;
+    topWeaknesses?: string[];
+    chaptersMastery?: {
+        subject: string;
+        chapter_id: string;
+        chapter_title: string;
+        mastery: number;
+        exam_weight: number;
+        passed: boolean;
+    }[];
 }
 
 // --- Helper: Get User ID ---

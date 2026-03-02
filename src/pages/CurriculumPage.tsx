@@ -129,7 +129,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ items, itemsError, onRe
                             </button>
                             <button
                                 onClick={async () => {
-                                    const confirmed = window.confirm('Remove this curriculum item? This cannot be undone.');
+                                    const confirmed = window.confirm('Remove this curriculum item? WARNING: This will permanently delete the item and immediately reset any readiness analytics or scores associated with it. This cannot be undone.');
                                     if (!confirmed) return;
                                     try {
                                         setIsDeleting(true);
@@ -316,7 +316,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ items, itemsError, onRe
                             </button>
                             <button
                                 onClick={async () => {
-                                    const confirmed = window.confirm('Remove this curriculum item? This cannot be undone.');
+                                    const confirmed = window.confirm('Remove this curriculum item? WARNING: This will permanently delete the item and immediately reset any readiness analytics or scores associated with it. This cannot be undone.');
                                     if (!confirmed) return;
                                     try {
                                         setIsDeleting(true);

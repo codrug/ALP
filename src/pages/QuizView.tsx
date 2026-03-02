@@ -19,6 +19,8 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
     const [selected, setSelected] = useState<number | null>(null);
     const [feedback, setFeedback] = useState<any>(null);
     const [score, setScore] = useState(0);
+    const [weightedScore, setWeightedScore] = useState(0);
+    const [weaknesses, setWeaknesses] = useState<string[]>([]);
     const [isFinished, setIsFinished] = useState(false);
 
     // Exit Warning State
@@ -33,6 +35,7 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
         explanation: string;
         questionText: string;
         options: string[];
+        gap_type?: string;
     }[]>([]);
 
     // Review Mode
@@ -97,6 +100,10 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
 
         if (data.correct) {
             setScore(prev => prev + 1);
+        } else {
+            if (data.gap_type) {
+                setWeaknesses(prev => [...prev, data.gap_type]);
+            }
         }
 
         // Record answer for review
@@ -106,6 +113,7 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
             correct: data.correct,
             correctIndex: data.correct_index,
             explanation: data.explanation,
+            gap_type: data.gap_type,
             questionText: questions[currentQ].question,
             options: questions[currentQ].options,
         }]);
@@ -118,6 +126,17 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
             setSelected(null);
             setFeedback(null);
         } else {
+            // Calculate weighted mastery before finishing
+            const foundationWrong = weaknesses.filter(w => w.toLowerCase() === 'foundation').length;
+            const applicationWrong = weaknesses.filter(w => w.toLowerCase() === 'application').length;
+            const otherWrong = weaknesses.length - foundationWrong - applicationWrong;
+
+            const effectiveWrong = foundationWrong + otherWrong + (1.5 * applicationWrong);
+            const totalQ = questions.length;
+            const effectiveCorrect = Math.max(0, totalQ - effectiveWrong);
+            const weighted = Math.round((effectiveCorrect / totalQ) * 100);
+
+            setWeightedScore(weighted);
             setIsFinished(true);
         }
     };
@@ -193,18 +212,48 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                             </div>
 
                             <h2 className="text-5xl font-black text-white mb-2 uppercase tracking-tighter">Session Complete</h2>
-                            <div className={`text-8xl font-black mb-4 ${isPassed ? 'text-green-500' : 'text-amber-500'}`}>{percentage}%</div>
-                            <p className="text-gray-400 mb-4 font-light">
-                                You correctly validated {score} out of {questions.length} high-yield concepts.
-                            </p>
+                            <div className={`text-8xl font-black mb-4 ${isPassed ? 'text-green-500' : 'text-amber-500'}`}>{weightedScore}%</div>
+
+                            <div className="flex flex-col items-center mb-8">
+                                <p className="text-gray-400 mb-2 font-light">
+                                    Weighted Mastery Rank • {score}/{questions.length} Correct
+                                </p>
+                                <div className="flex gap-2">
+                                    {Array.from(new Set(weaknesses)).slice(0, 3).map((w, i) => (
+                                        <span key={i} className="px-3 py-1 bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-black uppercase rounded-full">
+                                            {w} Gap Detected
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 mb-10 max-w-lg mx-auto">
+                                <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                                    <div className="text-[10px] font-black text-blue-500 uppercase mb-1">Foundation</div>
+                                    <div className="text-2xl font-black text-white">
+                                        {questions.filter(q => q.gap_type?.toLowerCase() === 'foundation').length > 0
+                                            ? Math.round((answerHistory.filter(h => h.correct && h.gap_type?.toLowerCase() === 'foundation').length / questions.filter(q => q.gap_type?.toLowerCase() === 'foundation').length) * 100)
+                                            : 100}%
+                                    </div>
+                                </div>
+                                <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                                    <div className="text-[10px] font-black text-amber-500 uppercase mb-1">Application</div>
+                                    <div className="text-2xl font-black text-white">
+                                        {questions.filter(q => q.gap_type?.toLowerCase() === 'application').length > 0
+                                            ? Math.round((answerHistory.filter(h => h.correct && h.gap_type?.toLowerCase() === 'application').length / questions.filter(q => q.gap_type?.toLowerCase() === 'application').length) * 100)
+                                            : 100}%
+                                    </div>
+                                </div>
+                            </div>
+
                             <h3 className="text-xl font-bold text-gray-300 mb-8">
-                                {isPassed ? "Mastery Achieved!" : "Gap Detected"}
+                                {isPassed ? "Mastery Achieved!" : "Critical Gaps Identified"}
                             </h3>
 
                             <p className="text-gray-500 mb-10 leading-relaxed max-w-lg mx-auto">
                                 {isPassed
-                                    ? "You've demonstrated strong command of this topic. You can proceed to the next module or deepen your current knowledge."
-                                    : "We found some foundation gaps. The system has updated your dashboard with targeted remediation steps."}
+                                    ? "You've demonstrated command of the core concepts. Application gaps were weighted 1.5x in this evaluation."
+                                    : "We detected specific gaps in your understanding, particularly in Application-level reasoning. Your dashboard has been updated with remediation priorities."}
                             </p>
 
                             <div className="flex flex-col md:flex-row gap-4 justify-center">
@@ -213,7 +262,7 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                                     className="px-8 py-5 rounded-2xl font-black transition-all flex items-center justify-center gap-2 border border-white/10 bg-white/5 text-white hover:bg-white/10"
                                 >
                                     <Eye className="w-5 h-5" />
-                                    Review Answers
+                                    Review Detailed Gaps
                                 </button>
                                 <button
                                     onClick={() => setView('dashboard')}
@@ -248,8 +297,15 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                                                 }
                                             </div>
                                             <div>
-                                                <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Question {idx + 1}</span>
-                                                <h3 className="text-lg font-bold text-white mt-1">{item.questionText}</h3>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Question {idx + 1}</span>
+                                                    {item.gap_type && (
+                                                        <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-black uppercase ${item.gap_type.toLowerCase() === 'application' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-blue-500/10 text-blue-500 border border-blue-500/20'}`}>
+                                                            {item.gap_type}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <h3 className="text-lg font-bold text-white">{item.questionText}</h3>
                                             </div>
                                         </div>
 
@@ -366,8 +422,15 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                     {feedback && (
                         <div className="animate-in slide-in-from-bottom-4">
                             <div className="p-6 bg-white/[0.03] border border-white/10 rounded-2xl mb-8">
-                                <div className="flex items-center gap-2 text-amber-500 text-xs font-black uppercase tracking-widest mb-3">
-                                    <AlertCircle className="w-4 h-4" /> Mastery Insight
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2 text-amber-500 text-xs font-black uppercase tracking-widest">
+                                        <AlertCircle className="w-4 h-4" /> Mastery Insight
+                                    </div>
+                                    {feedback.gap_type && (
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase ${feedback.gap_type.toLowerCase() === 'application' ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30' : 'bg-blue-500/20 text-blue-500 border border-blue-500/30'}`}>
+                                            {feedback.gap_type}
+                                        </span>
+                                    )}
                                 </div>
                                 <p className="text-gray-400 text-sm leading-relaxed">
                                     {feedback.explanation}

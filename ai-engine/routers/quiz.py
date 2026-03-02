@@ -160,5 +160,6 @@ def submit_answer(quiz_id: str, question_index: int, selected_option: int):
         "correct": is_correct,
         "correct_index": question["correct_index"],
         "explanation": question["explanation"],
-        "gap_type": question.get("gap_type") if not is_correct else None
+        "gap_type": question.get("gap_type"),
+        "question_details": question
     }

@@ -53,13 +53,13 @@ class GeminiService:
         - "Foundation": Tests basic facts, definitions, or recall.
         - "Application": Tests reasoning, problem-solving, or connecting concepts.
 
-        Return strictly a JSON list of objects:
+        Return strictly a JSON list of objects. Keep each explanation under 2 sentences.
         [
             {{
                 "question": "Question text here...",
                 "options": ["Option A", "Option B", "Option C", "Option D"],
                 "correct_index": 0,
-                "explanation": "Why the answer is correct.",
+                "explanation": "concise explanation here...",
                 "gap_type": "Foundation"
             }}
         ]

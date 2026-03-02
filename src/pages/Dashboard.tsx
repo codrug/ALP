@@ -13,6 +13,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
     const [readiness, setReadiness] = useState(0);
     const [trend, setTrend] = useState<number[]>([0, 0, 0]);
     const [riskAreas, setRiskAreas] = useState<{ name: string; score: number }[]>([]);
+    const [topWeaknesses, setTopWeaknesses] = useState<string[]>([]);
     const [summaryError, setSummaryError] = useState<string | null>(null);
 
     const [hasContent, setHasContent] = useState(false);
@@ -38,10 +39,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
                     setReadiness(summary.readiness || 0);
                     setTrend(summary.trend || [0, 0, 0]);
                     setRiskAreas(summary.riskChapters || []);
+                    setTopWeaknesses(summary.topWeaknesses || []);
                 } else {
                     setReadiness(0);
                     setTrend([0, 0, 0]);
                     setRiskAreas([]);
+                    setTopWeaknesses([]);
                 }
                 setSummaryError(null);
 
@@ -172,6 +175,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
                                 ))
                             )}
                         </div>
+
+                        {topWeaknesses.length > 0 && (
+                            <div className="mt-8 pt-8 border-t border-white/5">
+                                <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Top Diagnosed Gaps</h3>
+                                <div className="flex flex-wrap gap-2">
+                                    {topWeaknesses.map((w, i) => (
+                                        <div key={i} className="px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                                            <span className="text-xs font-bold text-red-500 uppercase">{w}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-[10px] text-gray-500 mt-4 leading-relaxed italic">
+                                    *Application gaps are weighted 1.5x in readiness calculation.
+                                </p>
+                            </div>
+                        )}
+
                         <div className="mt-8 pt-8 border-t border-white/5">
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Mastery Trend</h3>
