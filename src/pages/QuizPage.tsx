@@ -22,6 +22,7 @@ interface QuizPageProps {
 export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
     const [selectedMode, setSelectedMode] = useState<'subject' | 'diagnostic' | null>(null);
     const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+    const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
     const [documents, setDocuments] = useState<CurriculumItemDto[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -75,6 +76,8 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
         setSelectedSubjects((prev) =>
             prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
         );
+        // Reset chapter selection when switching domains
+        setSelectedChapterId(null);
     };
 
     const handleInitialize = () => {
@@ -91,6 +94,12 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
                 (d) => d.subject === subjectName && d.status === 'Active'
             );
             if (matchingDoc) {
+                // If a specific chapter has been selected, stash it so QuizView
+                // can generate a chapter-scoped quiz via localStorage.
+                if (selectedChapterId) {
+                    localStorage.setItem('alp_quiz_doc_id', matchingDoc.id);
+                    localStorage.setItem('alp_quiz_chapter_id', selectedChapterId);
+                }
                 onStartQuiz(matchingDoc.id, 'subject');
             }
         }
@@ -187,12 +196,13 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
                     </div>
                 </div>
             ) : selectedMode === 'subject' ? (
-                <div className="max-w-4xl mx-auto animate-in slide-in-from-bottom-4">
+                <div className="max-w-5xl mx-auto animate-in slide-in-from-bottom-4">
                     <div className="flex items-center justify-between mb-10">
                         <button
                             onClick={() => {
                                 setSelectedMode(null);
                                 setSelectedSubjects([]);
+                                setSelectedChapterId(null);
                             }}
                             className="flex items-center gap-2 text-gray-500 hover:text-white transition-colors text-xs font-black uppercase tracking-widest"
                         >
@@ -203,40 +213,99 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
                         </span>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
-                        {subjects.map((subject) => (
-                            <div
-                                key={subject.id}
-                                onClick={() => toggleSubject(subject.id)}
-                                className={`p-8 rounded-[2rem] border transition-all cursor-pointer flex flex-col items-center text-center group ${selectedSubjects.includes(subject.id)
-                                        ? 'bg-amber-500 border-amber-500 text-black shadow-2xl shadow-amber-500/20'
-                                        : 'bg-[#111] border-white/5 text-white hover:border-white/10'
+                    <div className="grid md:grid-cols-3 gap-8 mb-16">
+                        {/* Domain selection */}
+                        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {subjects.map((subject) => (
+                                <div
+                                    key={subject.id}
+                                    onClick={() => toggleSubject(subject.id)}
+                                    className={`p-6 rounded-[2rem] border transition-all cursor-pointer flex flex-col items-center text-center group ${
+                                        selectedSubjects.includes(subject.id)
+                                            ? 'bg-amber-500 border-amber-500 text-black shadow-2xl shadow-amber-500/20'
+                                            : 'bg-[#111] border-white/5 text-white hover:border-white/10'
                                     }`}
-                            >
-                                <div
-                                    className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 border transition-all ${selectedSubjects.includes(subject.id)
-                                            ? 'bg-black/10 border-black/20'
-                                            : 'bg-white/5 border-white/10 group-hover:border-amber-500/30'
-                                        }`}
                                 >
-                                    <div className={selectedSubjects.includes(subject.id) ? 'text-black' : 'text-amber-500'}>
-                                        {subjectIcons[subject.name] || defaultIcon}
+                                    <div
+                                        className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 border transition-all ${
+                                            selectedSubjects.includes(subject.id)
+                                                ? 'bg-black/10 border-black/20'
+                                                : 'bg-white/5 border-white/10 group-hover:border-amber-500/30'
+                                        }`}
+                                    >
+                                        <div className={selectedSubjects.includes(subject.id) ? 'text-black' : 'text-amber-500'}>
+                                            {subjectIcons[subject.name] || defaultIcon}
+                                        </div>
                                     </div>
+                                    <h4 className="font-black text-base uppercase tracking-tight">{subject.name}</h4>
+                                    <p className="text-[10px] mt-2 opacity-60 font-bold uppercase tracking-widest">
+                                        {subject.docIds.length} {subject.docIds.length === 1 ? 'module' : 'modules'}
+                                    </p>
                                 </div>
-                                <h4 className="font-black text-lg uppercase tracking-tight">{subject.name}</h4>
-                                <p className="text-[10px] mt-2 opacity-60 font-bold uppercase tracking-widest">
-                                    {subject.docIds.length} {subject.docIds.length === 1 ? 'module' : 'modules'}
+                            ))}
+                        </div>
+
+                        {/* Chapter selection for first selected subject */}
+                        <div className="bg-[#111] border border-white/5 rounded-3xl p-6">
+                            <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">
+                                Target Chapter (Optional)
+                            </h4>
+                            {selectedSubjects.length === 0 ? (
+                                <p className="text-gray-600 text-xs">
+                                    Select a domain to view its chapters and isolate a specific unit for assessment.
                                 </p>
-                                <div
-                                    className={`mt-4 w-6 h-6 rounded-full border flex items-center justify-center transition-all ${selectedSubjects.includes(subject.id)
-                                            ? 'bg-black border-black text-amber-500'
-                                            : 'border-white/10'
-                                        }`}
-                                >
-                                    {selectedSubjects.includes(subject.id) && <CheckCircle2 className="w-4 h-4" />}
-                                </div>
-                            </div>
-                        ))}
+                            ) : (
+                                (() => {
+                                    const selectedSubject = subjects.find(
+                                        (s) => s.id === selectedSubjects[0]
+                                    );
+                                    const subjectName = selectedSubject?.name;
+                                    const matchingDoc = documents.find(
+                                        (d) => d.subject === subjectName && d.status === 'Active'
+                                    );
+                                    const chapters = matchingDoc?.chapters || [];
+
+                                    if (!matchingDoc || chapters.length === 0) {
+                                        return (
+                                            <p className="text-gray-600 text-xs">
+                                                No chapter metadata found for this domain. You can still run a full
+                                                subject-wise quiz.
+                                            </p>
+                                        );
+                                    }
+
+                                    return (
+                                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                            {chapters.map((chapter) => (
+                                                <button
+                                                    key={chapter.id}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setSelectedChapterId(
+                                                            selectedChapterId === chapter.id ? null : chapter.id
+                                                        )
+                                                    }
+                                                    className={`w-full text-left text-xs px-3 py-2 rounded-xl border transition-all ${
+                                                        selectedChapterId === chapter.id
+                                                            ? 'bg-amber-500 text-black border-amber-500'
+                                                            : 'bg-white/5 text-gray-300 border-white/10 hover:border-amber-500/40'
+                                                    }`}
+                                                >
+                                                    <span className="block font-bold truncate">
+                                                        {chapter.title || `Chapter ${chapter.id}`}
+                                                    </span>
+                                                    {chapter.concepts?.length > 0 && (
+                                                        <span className="block text-[10px] text-gray-500 truncate">
+                                                            {chapter.concepts.slice(0, 2).join(' • ')}
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    );
+                                })()
+                            )}
+                        </div>
                     </div>
 
                     <div className="text-center">
@@ -245,7 +314,7 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
                             onClick={handleInitialize}
                             className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-800 disabled:opacity-50 text-black px-20 py-6 rounded-[2.5rem] font-black text-2xl transition-all shadow-2xl shadow-amber-500/20 flex items-center justify-center gap-4 mx-auto group active:scale-95"
                         >
-                            Initialize Subject Loop
+                            {selectedChapterId ? 'Initialize Chapter Loop' : 'Initialize Subject Loop'}
                             <ChevronRight className="w-8 h-8 group-hover:translate-x-3 transition-transform" />
                         </button>
                     </div>

@@ -44,7 +44,23 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE_URL}/quiz/generate/${docId}`, { method: 'POST' });
+            // Optional chapter-level targeting: if a previous screen stored a
+            // specific chapter to quiz on, we read it from localStorage and
+            // pass it as chapter_id. This keeps the prop surface small while
+            // enabling chapter-scoped quizzes end-to-end.
+            let chapterIdParam: string | null = null;
+            const storedDocId = localStorage.getItem('alp_quiz_doc_id');
+            const storedChapterId = localStorage.getItem('alp_quiz_chapter_id');
+            if (storedDocId && storedChapterId && storedDocId === docId) {
+                chapterIdParam = storedChapterId;
+            }
+
+            let url = `${API_BASE_URL}/quiz/generate/${docId}`;
+            if (chapterIdParam) {
+                url += `?chapter_id=${encodeURIComponent(chapterIdParam)}`;
+            }
+
+            const res = await fetch(url, { method: 'POST' });
             if (!res.ok) {
                 const data = await res.json();
                 throw new Error(data.detail || "Failed to generate quiz");
@@ -53,6 +69,11 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
             setQuestions(data.questions);
             setQuizId(data.quiz_id);
             setLoading(false);
+
+            // Clear any one-time chapter targeting so future quizzes default
+            // back to full-document unless explicitly set again.
+            localStorage.removeItem('alp_quiz_doc_id');
+            localStorage.removeItem('alp_quiz_chapter_id');
         } catch (err: any) {
             console.error("Failed to start quiz", err);
             setError(err.message || "Failed to start diagnostic loop. The AI engine might be busy.");

@@ -46,6 +46,28 @@ EMBED_DIM = int(os.getenv("EMBED_DIM", "768"))
 
 logger = logging.getLogger("alp")
 
+# Subject-level exam weightings used to compute exam-weighted readiness.
+# These are relative weights (they do not sum to 1.0).
+# For now we only support two subjects explicitly. Others are intentionally
+# commented out so they do NOT silently fall back.
+SUBJECT_WEIGHTS: dict[str, float] = {
+    # Core GATE CSE-style subjects (currently limited to CN + OS)
+    # "Programming and Data Structures": 0.14,
+    # "Data Structures": 0.14,
+    # "Algorithms": 0.12,
+    "Computer Networks": 0.10,
+    "Operating Systems": 0.10,
+    # "Database Management Systems": 0.10,
+    # "DBMS": 0.10,
+    # "Theory of Computation": 0.09,
+    # "TOC": 0.09,
+    # "Computer Organization and Architecture": 0.08,
+    # "COA": 0.08,
+    # "Digital Logic": 0.06,
+    # "Compiler Design": 0.05,
+    # No generic fallback: unsupported subjects are simply not included
+}
+
 # Allow CORS for frontend
 origins = [
     "http://localhost:3000",
@@ -241,50 +263,136 @@ def format_document(document: dict) -> dict:
     }
 
 
-# [UPDATED] Dashboard Calculation logic with User Isolation
+# [UPDATED] Dashboard Calculation logic with User Isolation and exam-weighted mastery
 def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
-    # 1. Load Quiz Data
-    quizzes = {}
+    # 1. Load Quiz Data scoped to this user's documents
+    quizzes: dict[str, dict] = {}
     if QUIZ_INDEX.exists():
         with open(QUIZ_INDEX, "r", encoding="utf-8") as f:
             try:
                 all_quizzes = json.load(f)
-
                 # Get list of doc IDs belonging to this user
-                user_doc_ids = {d["id"] for d in documents}
-
-                # Filter quizzes to only include those linked to user's documents
-                quizzes = {qid: q for qid, q in all_quizzes.items() if q.get("doc_id") in user_doc_ids}
+                user_doc_ids = {d.get("id") for d in documents}
+                # Filter quizzes to only include those linked to this user's documents
+                quizzes = {
+                    qid: q
+                    for qid, q in all_quizzes.items()
+                    if q.get("doc_id") in user_doc_ids
+                }
             except json.JSONDecodeError:
                 quizzes = {}
 
     total_quizzes = len(quizzes)
 
-    # 2. Calculate Readiness
-    readiness = 12
-    if total_quizzes > 0:
-        readiness += (total_quizzes * 5)
+    # Fast lookup for document metadata
+    docs_by_id: dict[str, dict] = {d.get("id"): d for d in documents}
 
-    readiness = min(readiness, 98)
+    # 2. Aggregate chapter-level mastery from quiz history
+    # Keyed by (doc_id, chapter_id_or_all)
+    chapter_stats: dict[tuple[str, str], dict] = {}
 
-    # 3. Identify Risks (Weaknesses)
-    gap_counts = {}
-    for q_id, q_data in quizzes.items():
-        for weakness in q_data.get("weaknesses", []):
-            gap_counts[weakness] = gap_counts.get(weakness, 0) + 1
+    for quiz in quizzes.values():
+        doc_id = quiz.get("doc_id")
+        if not doc_id or doc_id not in docs_by_id:
+            continue
 
-    sorted_risks = sorted(gap_counts.items(), key=lambda x: x[1], reverse=True)
+        document = docs_by_id[doc_id]
+        subject = document.get("subject", "") or ""
+        chapter_id_raw = quiz.get("chapter_id")  # None means "full document" quiz
+        chapter_key = str(chapter_id_raw) if chapter_id_raw is not None else "ALL"
 
-    risk_chapters = []
-    if sorted_risks:
-        for gap, count in sorted_risks[:3]:
-            risk_score = max(10, 80 - (count * 10))
-            risk_chapters.append({"name": f"{gap} Concepts", "score": risk_score})
+        total_questions = quiz.get("total_questions")
+        score = quiz.get("score")
+        if not isinstance(total_questions, int) or total_questions <= 0:
+            # Older quiz records might not have total_questions; skip them for mastery
+            continue
+        if not isinstance(score, int) or score < 0:
+            score = 0
+
+        # Percentage mastery for this quiz session
+        percentage = max(0.0, min(100.0, (score / total_questions) * 100.0))
+
+        # Resolve a human-readable chapter title
+        chapter_title = "Full Document"
+        if chapter_id_raw is not None:
+            for ch in document.get("chapters", []):
+                if str(ch.get("id")) == str(chapter_id_raw):
+                    chapter_title = ch.get("title") or chapter_title
+                    break
+        elif document.get("topic"):
+            chapter_title = document["topic"]
+
+        # Resolve exam weight from subject; if subject is not supported yet,
+        # skip this quiz for exam-weighted readiness.
+        base_weight = SUBJECT_WEIGHTS.get(subject)
+        if base_weight is None:
+            continue
+
+        key = (doc_id, chapter_key)
+        if key not in chapter_stats:
+            chapter_stats[key] = {
+                "subject": subject,
+                "chapter_id": chapter_key,
+                "chapter_title": chapter_title,
+                "sum_percent": 0.0,
+                "count": 0,
+                "exam_weight": base_weight,
+            }
+
+        chapter_stats[key]["sum_percent"] += percentage
+        chapter_stats[key]["count"] += 1
+
+    # 3. Compute per-chapter mastery and exam-weighted readiness
+    weighted_sum = 0.0
+    weight_sum = 0.0
+    mastered_chapters: list[dict] = []
+
+    for info in chapter_stats.values():
+        if info["count"] <= 0:
+            continue
+        mastery = info["sum_percent"] / info["count"]
+        weight = info.get("exam_weight")
+        if weight is None:
+            continue
+
+        weighted_sum += mastery * weight
+        weight_sum += weight
+
+        mastered_chapters.append(
+            {
+                "subject": info["subject"],
+                "chapter_id": info["chapter_id"],
+                "chapter_title": info["chapter_title"],
+                "mastery": mastery,
+                "exam_weight": weight,
+            }
+        )
+
+    if weight_sum > 0:
+        readiness = int(round(weighted_sum / weight_sum))
+    else:
+        # If we don't have any weighted mastery data (e.g., no quizzes for
+        # supported subjects like Computer Networks / Operating Systems),
+        # we report readiness as 0 so the UI can signal "not enough data".
+        readiness = 0
+
+    # 4. Identify top risk chapters (low mastery × high exam weight)
+    risk_chapters: list[dict] = []
+    if mastered_chapters:
+        # Higher "risk_metric" means more exam-important and lower mastery
+        mastered_chapters.sort(
+            key=lambda c: ((100.0 - c["mastery"]) * c["exam_weight"]), reverse=True
+        )
+        for chapter in mastered_chapters[:3]:
+            # For the UI bar, represent "risk" as inverse of mastery (clipped)
+            risk_score = max(10, min(100, int(round(100.0 - chapter["mastery"]))))
+            name = chapter["chapter_title"] or (chapter["subject"] or "Chapter")
+            risk_chapters.append({"name": name, "score": risk_score})
     elif documents:
         # Fallback if no quizzes taken yet but docs exist
         risk_chapters.append({"name": documents[0].get("subject", "General"), "score": 42})
 
-    # 4. Determine Next Action & Type (for smart quiz recommendation)
+    # 5. Determine Next Action & Type (for smart quiz recommendation)
     next_action = ""
     next_action_type = "upload"  # upload | diagnostic | subject | expand
 
@@ -292,21 +400,27 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
         next_action = "Upload a GATE syllabus to start."
         next_action_type = "upload"
     elif total_quizzes == 0:
-        next_action = f"Take a diagnostic quiz to benchmark your readiness across all {len(documents)} synchronized modules."
+        next_action = (
+            f"Take a diagnostic quiz to benchmark your readiness across all {len(documents)} synchronized modules."
+        )
         next_action_type = "diagnostic"
     elif readiness < 50:
-        # Find the weakest subject for targeted recommendation
-        if sorted_risks:
-            weakest = sorted_risks[0][0]
-            next_action = f"Critical gap in {weakest}. Recommended: Subject-wise quiz to isolate and eliminate micro-gaps."
+        # Find the weakest subject or chapter for targeted recommendation
+        if mastered_chapters:
+            weakest = mastered_chapters[0]["chapter_title"]
+            next_action = (
+                f"Critical gap in {weakest}. Recommended: Subject-wise or chapter-wise quiz to isolate and eliminate micro-gaps."
+            )
             next_action_type = "subject"
         else:
             next_action = "High risk detected. Recommended: Full diagnostic to identify weak foundations."
             next_action_type = "diagnostic"
     elif readiness < 80:
-        if sorted_risks:
-            weakest = sorted_risks[0][0]
-            next_action = f"Focus on {weakest} — a targeted subject quiz will close the gap to 80% mastery."
+        if mastered_chapters:
+            weakest = mastered_chapters[0]["chapter_title"]
+            next_action = (
+                f"Focus on {weakest} — a targeted quiz will close the gap to 80% mastery."
+            )
             next_action_type = "subject"
         else:
             next_action = "Run a diagnostic quiz to validate your progress across all topics."
@@ -325,7 +439,7 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
         "nextAction": next_action,
         "nextActionType": next_action_type,
         "subjects": subjects,
-        "hasContent": total_quizzes > 0
+        "hasContent": total_quizzes > 0,
     }
 
 
