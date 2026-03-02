@@ -309,8 +309,20 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
         if not isinstance(score, int) or score < 0:
             score = 0
 
-        # Percentage mastery for this quiz session
-        percentage = max(0.0, min(100.0, (score / total_questions) * 100.0))
+        # Percentage mastery for this quiz session, weighted by gap type.
+        # Foundation mistakes are treated as 1x cost, Application mistakes as 1.5x.
+        weaknesses = quiz.get("weaknesses", []) or []
+        foundation_wrong = sum(1 for w in weaknesses if str(w).lower() == "foundation")
+        application_wrong = sum(1 for w in weaknesses if str(w).lower() == "application")
+        other_wrong = len(weaknesses) - foundation_wrong - application_wrong
+
+        effective_wrong = (
+            float(foundation_wrong)
+            + float(other_wrong)
+            + 1.5 * float(application_wrong)
+        )
+        effective_correct = max(0.0, float(total_questions) - effective_wrong)
+        percentage = max(0.0, min(100.0, (effective_correct / float(total_questions)) * 100.0))
 
         # Resolve a human-readable chapter title
         chapter_title = "Full Document"

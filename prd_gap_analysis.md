@@ -14,7 +14,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
-| 1.1 | Platform must measure *actual* understanding, not perceived understanding | ⚠️ | Quiz exists, but scoring is flat (correct/incorrect count). **Fix:** weight questions by `gap_type` (Foundation vs Application) and by exam-weightage per chapter. |
+| 1.1 | Platform must measure *actual* understanding, not perceived understanding | ✅ | Quiz sessions now feed into an exam-weighted, chapter-level mastery model where Application gaps are penalized more heavily than Foundation gaps (via `gap_type`-weighted scoring) and chapters are weighted by exam importance (currently CN/OS). |
 | 1.2 | Adapt learning based on diagnosed gaps | ⚠️ | [generate_remediation()](file:///d:/ALP/ai-engine/services/gemini.py#108-143) exists in [gemini.py](file:///d:/ALP/ai-engine/services/gemini.py) but is **never called** from any route or frontend. **Fix:** wire up a `/quiz/{quiz_id}/remediation` endpoint and show remediation cards after quiz results. |
 | 1.3 | Remain strictly grounded in syllabus & exam patterns | ⚠️ | Quiz prompt says "based ONLY on the following text" — correct intent, but there is **no verifier LLM or rule-based check** to enforce grounding. **Fix:** add validation pipeline (see §12). |
 | 1.4 | Learn from its own mistakes without learning incorrect content | ❌ | No error/hallucination logging exists. **Fix:** create an `error_log.json` or DB table; log any failed validations; use logs to refine prompts (see §13). |
