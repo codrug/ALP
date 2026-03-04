@@ -17,7 +17,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | 1.1 | Platform must measure *actual* understanding, not perceived understanding | ✅ | Quiz sessions now feed into an exam-weighted, chapter-level mastery model where Application gaps are penalized more heavily than Foundation gaps (1.5x weight) for CN and OS subjects. |
 | 1.2 | Adapt learning based on diagnosed gaps | ⚠️ | [generate_remediation()](file:///d:/ALP/ai-engine/services/gemini.py#108-143) exists in [gemini.py](file:///d:/ALP/ai-engine/services/gemini.py) but is **never called** from any route or frontend. **Fix:** wire up a `/quiz/{quiz_id}/remediation` endpoint and show remediation cards after quiz results. |
 | 1.3 | Remain strictly grounded in syllabus & exam patterns | ⚠️ | Quiz prompt says "based ONLY on the following text" — correct intent, but there is **no verifier LLM or rule-based check** to enforce grounding. **Fix:** add validation pipeline (see §12). |
-| 1.4 | Learn from its own mistakes without learning incorrect content | ❌ | No error/hallucination logging exists. **Fix:** create an `error_log.json` or DB table; log any failed validations; use logs to refine prompts (see §13). |
+| 1.4 | Learn from its own mistakes without learning incorrect content | ✅ | [error_logger.py](file:///d:/ALP/ai-engine/services/error_logger.py) is fully implemented: logs parse failures and user-flagged questions to `data/error_log.json` with `error_type`, `model_used`, `prompt_hash`, and `used_for_optimization: false`. Called both from `generate_quiz()` and `flag_question()`. |
 
 ---
 
@@ -48,7 +48,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | 4.2 | Immediate feedback on mistakes | ✅ | [QuizView.tsx](file:///d:/ALP/src/pages/QuizView.tsx) shows explanation card immediately after each wrong answer. |
 | 4.3 | Explainable, deterministic scoring | ✅ | Score surfaces weighted mastery; results screen shows per-category (Foundation/Application) breakdown. |
 | 4.4 | LLMs propose, system validates | ❌ | No verifier step. LLM output accepted verbatim. **Fix:** see §12. |
-| 4.5 | Learn from errors, never from incorrect knowledge | ❌ | No error DB. **Fix:** see §13. |
+| 4.5 | Learn from errors, never from incorrect knowledge | ✅ | `error_log.json` stores all failures with `used_for_optimization: false` to prevent knowledge pollution — implemented in [error_logger.py](file:///d:/ALP/ai-engine/services/error_logger.py). |
 | 4.6 | Reduce verbosity for competitive exams | ✅ | Gemini prompt strictly limits explanations to 2 sentences. |
 
 ---
@@ -121,7 +121,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | 10A | User Content Layer — documents stored per-user | ✅ | PDF/DOCX stored in `data/uploads/`, metadata in `documents.json` with `user_id`. |
 | 10B | Vector DB (RAG) — chunked, embedded, metadata-tagged | ✅ | Parse pipeline now embeds each chunk via `GeminiService.generate_embeddings()` (FastEmbed BGE model) and upserts to Qdrant with per-doc/user/chapter metadata. Retrieval for quiz generation is still missing (see 14.3). |
 | 10C | Master Q&A Datastore — validated-only content | ❌ | Does not exist. `quizzes.json` stores raw LLM output. **Fix:** add `master_qa.json` or a DB table; only promote questions that pass validation. |
-| 10D | Error/Experience DB — logs hallucinations & deviations | ❌ | No logging. **Fix:** add `error_log.json`; log validation failures, flagged questions. |
+| 10D | Error/Experience DB — logs hallucinations & deviations | ✅ | `data/error_log.json` is created and managed by [error_logger.py](file:///d:/ALP/ai-engine/services/error_logger.py). Entries include `id`, `timestamp`, `error_type`, `model_used`, `prompt_hash`, `content_snapshot`, and `used_for_optimization: false`. Triggered automatically on parse failures and via the `POST /quiz/{quiz_id}/flag` route. |
 
 ---
 
@@ -143,7 +143,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 |---|-----------|--------|------------------------|
 | 12.1 | Rule-based checks on LLM/Parse output | ✅ | Stricter rule-based parsing implemented: length guards (<= 120 chars), numbering enforcement (`1.`, `A.`, `Chapter`), and manual topic priority from form input. |
 | 12.2 | Verifier LLM validation | ❌ | **Fix:** add a second Gemini call — prompt a verifier to confirm the answer is correct given the source text. |
-| 12.3 | Human-in-the-loop approval (sampling or mandatory in MVP) | ❌ | **Fix (MVP):** add a `/quiz/{quiz_id}/flag` endpoint; let users flag wrong questions; log flags in `error_log.json`. Admin review can be manual initially. |
+| 12.3 | Human-in-the-loop approval (sampling or mandatory in MVP) | ⚠️ | `POST /quiz/{quiz_id}/flag` endpoint implemented in [quiz.py](file:///d:/ALP/ai-engine/routers/quiz.py#L177-208) — logs `error_type`, `question`, and `user_note` to `error_log.json`. **Missing:** no frontend flag button on the quiz feedback card. **Fix:** add a "Report" or 🚩 icon button to [QuizView.tsx](file:///d:/ALP/src/pages/QuizView.tsx) that calls this endpoint. |
 
 ---
 
@@ -199,7 +199,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 |---|-----------|--------|-------|
 | 17.1 | One exam only | ✅ | GATE hardcoded throughout. |
 | 17.2 | Limited subjects & chapters | ✅ | Subject dropdown has 3 options. |
-| 17.3 | Manual/sampling validation allowed | ❌ | No validation mechanism at all — needs at least a flag/report button. |
+| 17.3 | Manual/sampling validation allowed | ⚠️ | Backend flag endpoint is live (`POST /quiz/{quiz_id}/flag` in [quiz.py](file:///d:/ALP/ai-engine/routers/quiz.py)). Logs go to `error_log.json` for manual admin review. **Missing:** frontend trigger — add a 🚩 "Report Question" button to the quiz feedback card. |
 | 17.4 | Focus on closed-loop learning proof | ⚠️ | Remediation and Reassessment routes exist but are the final remaining gap for a fully automated loop. |
 
 ---
@@ -225,17 +225,21 @@ All items (IRT, multi-exam, predictive scoring, institutional dashboards) are co
 
 ## Priority Summary
 
-1. **Close the mastery loop**: Remediation → Reassessment
-2. **Wire up [generate_remediation()](file:///d:/ALP/ai-engine/services/gemini.py#108-143)** to a route and frontend screen
-3. **Automate Reassessment** trigger from weak chapters
+### 🔴 Critical (loop is open)
 
-4. Add **validation pipeline** (rule-based + verifier LLM) before questions enter the quiz
-5. Add **error logging** (hallucinations, flagged questions)
-6. **Activate Qdrant**: use RAG for quiz generation
+1. **Close the mastery loop**: Remediation → Reassessment
+2. **Wire up [generate_remediation()](file:///d:/ALP/ai-engine/services/gemini.py#128-162)** — create `GET /quiz/{quiz_id}/remediation` route + frontend remediation screen
+3. **Automate Reassessment** — add a "Reassess" button after remediation that scopes a new quiz to weak chapters only
+
+### 🟡 Important (quality & trust)
+
+4. **Add 🚩 "Report Question" button** in [QuizView.tsx](file:///d:/ALP/src/pages/QuizView.tsx) to trigger the existing `POST /quiz/{quiz_id}/flag` backend endpoint
+5. Add **verifier LLM call** (second Gemini pass) before questions are saved to `quizzes.json`
+6. **Activate Qdrant RAG**: add a vector search step in quiz generation to retrieve top-N relevant chunks before calling Gemini
 
 ### 🟢 Nice-to-have (polish to PRD standard)
 
-10. Add user feedback (👍/👎) on explanations
-11. Enforce verbosity limits in LLM prompts
-12. Show per-chapter mastery breakdown on result screen
-13. Plan **PostgreSQL migration** for post-MVP
+7. Add user feedback (👍/👎) on explanation cards
+8. Cache per-chapter mastery score explicitly in `documents.json` for long-term history
+9. Plan **PostgreSQL migration** for post-MVP
+10. Extend exam-weighted mastery beyond CN/OS to all uploaded subjects
