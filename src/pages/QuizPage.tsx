@@ -214,7 +214,7 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
 
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
                         {/* 1. Subject Selection */}
-                        <div className="lg:col-span-3 space-y-4">
+                        <div className="lg:col-span-5 space-y-4">
                             <h4 className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-4 flex items-center gap-2">
                                 <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[8px]">1</span>
                                 Select Subject
@@ -225,8 +225,8 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
                                         key={subject.id}
                                         onClick={() => toggleSubject(subject.id)}
                                         className={`w-full p-4 rounded-2xl border transition-all flex items-center gap-4 group ${selectedSubjects.includes(subject.id)
-                                                ? 'bg-amber-500 border-amber-500 text-black'
-                                                : 'bg-white/5 border-white/10 text-white hover:border-white/20'
+                                            ? 'bg-amber-500 border-amber-500 text-black'
+                                            : 'bg-white/5 border-white/10 text-white hover:border-white/20'
                                             }`}
                                     >
                                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${selectedSubjects.includes(subject.id) ? 'bg-black/10 border-black/10' : 'bg-white/5 border-white/10'
@@ -245,7 +245,7 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
                         </div>
 
                         {/* 2. Topic (Document) Selection */}
-                        <div className="lg:col-span-4 space-y-4">
+                        <div className="lg:col-span-7 space-y-4">
                             <h4 className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-4 flex items-center gap-2">
                                 <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[8px]">2</span>
                                 Select Module / Topic
@@ -271,8 +271,8 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
                                                         setDocuments([...documents]);
                                                     }}
                                                     className={`w-full p-4 rounded-2xl border transition-all flex items-start gap-4 ${isSelected
-                                                            ? 'bg-white/10 border-amber-500/50 text-white'
-                                                            : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20'
+                                                        ? 'bg-white/10 border-amber-500/50 text-white'
+                                                        : 'bg-white/5 border-white/10 text-gray-400 hover:border-white/20'
                                                         }`}
                                                 >
                                                     <div className={`mt-1 w-2 h-2 rounded-full ${isSelected ? 'bg-amber-500' : 'bg-gray-800'}`} />
@@ -289,86 +289,6 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
                             </div>
                         </div>
 
-                        {/* 3. Chapter Selection */}
-                        <div className="lg:col-span-5 space-y-4">
-                            <h4 className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-[8px]">3</span>
-                                Target Chapter (Diagnostic)
-                            </h4>
-                            <div className="bg-[#111] border border-white/5 rounded-[2.5rem] p-8">
-                                {!localStorage.getItem('alp_quiz_doc_id') ? (
-                                    <div className="py-12 text-center">
-                                        <Archive className="w-10 h-10 text-gray-800 mx-auto mb-4" />
-                                        <p className="text-[10px] font-black text-gray-700 uppercase tracking-widest">Select a module to view its chapters</p>
-                                    </div>
-                                ) : (
-                                    (() => {
-                                        const docId = localStorage.getItem('alp_quiz_doc_id');
-                                        const doc = documents.find(d => d.id === docId);
-                                        const chapters = doc?.chapters || [];
-
-                                        if (chapters.length === 0) {
-                                            return (
-                                                <div className="py-12 text-center">
-                                                    <p className="text-[10px] font-black text-gray-700 uppercase tracking-widest">No detailed chapter analysis available</p>
-                                                </div>
-                                            );
-                                        }
-
-                                        return (
-                                            <>
-                                                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-6">
-                                                    Isolate a specific unit or take the full module simulation.
-                                                </p>
-                                                <div className="grid grid-cols-1 gap-3 max-h-[350px] overflow-y-auto pr-2 scrollbar-thin">
-                                                    <button
-                                                        onClick={() => {
-                                                            localStorage.removeItem('alp_quiz_chapter_id');
-                                                            setSelectedChapterId(null);
-                                                        }}
-                                                        className={`w-full text-left p-4 rounded-2xl border transition-all ${!selectedChapterId
-                                                                ? 'bg-amber-500 text-black border-amber-500'
-                                                                : 'bg-white/5 border-white/5 text-white hover:border-white/20'
-                                                            }`}
-                                                    >
-                                                        <span className="block font-black text-xs uppercase tracking-tight">Full Module Assessment</span>
-                                                        <span className={`block text-[9px] font-bold uppercase tracking-widest mt-1 ${!selectedChapterId ? 'text-black/60' : 'text-gray-600'}`}>
-                                                            Includes all chapters below
-                                                        </span>
-                                                    </button>
-                                                    <div className="h-px bg-white/5 my-2" />
-                                                    {chapters.map((chapter) => (
-                                                        <button
-                                                            key={chapter.id}
-                                                            onClick={() => {
-                                                                localStorage.setItem('alp_quiz_chapter_id', chapter.id);
-                                                                setSelectedChapterId(chapter.id);
-                                                            }}
-                                                            className={`w-full text-left p-4 rounded-2xl border transition-all ${selectedChapterId === chapter.id
-                                                                    ? 'bg-amber-500/20 border-amber-500 text-amber-500'
-                                                                    : 'bg-white/5 border-white/5 text-gray-400 hover:border-white/20'
-                                                                }`}
-                                                        >
-                                                            <div className="flex justify-between items-start mb-1">
-                                                                <span className="block font-black text-xs uppercase tracking-tight truncate">{chapter.title || `Chapter ${chapter.id}`}</span>
-                                                                {selectedChapterId === chapter.id && <CheckCircle2 className="w-3.5 h-3.5" />}
-                                                            </div>
-                                                            <div className="flex flex-wrap gap-1 mt-2">
-                                                                {chapter.concepts.slice(0, 3).map((c, i) => (
-                                                                    <span key={i} className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md ${selectedChapterId === chapter.id ? 'bg-amber-500/10 text-amber-500/70' : 'bg-black/20 text-gray-600'}`}>
-                                                                        {c}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </>
-                                        );
-                                    })()
-                                )}
-                            </div>
-                        </div>
                     </div>
 
                     <div className="mt-16 text-center">
@@ -377,7 +297,7 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
                             onClick={handleInitialize}
                             className="bg-amber-500 hover:bg-amber-600 disabled:bg-white/5 disabled:text-gray-800 disabled:border-white/5 text-black px-16 py-6 rounded-3xl font-black text-xl transition-all shadow-2xl shadow-amber-500/20 flex items-center justify-center gap-4 mx-auto group active:scale-95 border border-amber-400/20"
                         >
-                            {selectedChapterId ? 'Initialize Unit Protocol' : 'Initialize Module Protocol'}
+                            Initialize Module Protocol
                             <ChevronRight className="w-6 h-6 group-hover:translate-x-2 transition-transform" />
                         </button>
                         <p className="mt-6 text-[10px] font-black text-gray-700 uppercase tracking-[0.2em]">

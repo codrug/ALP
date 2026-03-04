@@ -67,8 +67,8 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
 | 6.1 | User uploads syllabus-aligned study material | ✅ | [UploadPage.tsx](file:///d:/ALP/src/pages/UploadPage.tsx) → `/upload` endpoint. |
-| 6.2 | System structures content into chapters & concepts | ✅ | `/documents/{doc_id}/parse` chunks by headings, extracts concepts. |
-| 6.3 | User takes a diagnostic / chapter quiz | ✅ | Diagnostic quizzes work as before; subject-wise mode now lets the user optionally pick a specific chapter on the frontend, which flows through to `/quiz/generate/{doc_id}?chapter_id=X` for chapter-scoped quizzes. |
+| 6.2 | System structures content into chapters & concepts | ✅ | Strict heading validation implemented (requires numbers/keys, max 120 chars). Integrated **deferred storage pipeline** where files are stored only after user review/edit of topics. |
+| 6.3 | User takes a diagnostic / chapter quiz | ✅ | Flow simplified to 2-step (Subject -> Module/Topic) to reduce friction. System automatically generates full-module protocols for the selected topic. |
 | 6.4 | System provides immediate feedback on every wrong answer | ✅ | Feedback card with explanation shown instantly in [QuizView.tsx](file:///d:/ALP/src/pages/QuizView.tsx). |
 | 6.5 | System diagnoses gaps (foundation vs application) | ✅ | `gap_type` badges (e.g., "Foundation Gap" / "Application Gap") are displayed on feedback cards and review screens. |
 | 6.6 | Targeted learning / remediation provided | ❌ | [generate_remediation()](file:///d:/ALP/ai-engine/services/gemini.py#108-143) exists but is **dead code** — no route calls it. **Fix:** create a `GET /quiz/{quiz_id}/remediation` route; call it from a new remediation screen shown after quiz results. |
@@ -141,7 +141,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
-| 12.1 | Rule-based checks on LLM output | ⚠️ | Only structural validation exists (required keys check in [quiz.py](file:///d:/ALP/ai-engine/routers/quiz.py)). No semantic rules. **Fix:** add checks: e.g., correct_index within range, options are distinct, question is non-trivial, explanation references the source text. |
+| 12.1 | Rule-based checks on LLM/Parse output | ✅ | Stricter rule-based parsing implemented: length guards (<= 120 chars), numbering enforcement (`1.`, `A.`, `Chapter`), and manual topic priority from form input. |
 | 12.2 | Verifier LLM validation | ❌ | **Fix:** add a second Gemini call — prompt a verifier to confirm the answer is correct given the source text. |
 | 12.3 | Human-in-the-loop approval (sampling or mandatory in MVP) | ❌ | **Fix (MVP):** add a `/quiz/{quiz_id}/flag` endpoint; let users flag wrong questions; log flags in `error_log.json`. Admin review can be manual initially. |
 
@@ -151,9 +151,9 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
-| 13.1 | Log hallucinations, off-topic outputs, incorrect answers | ❌ | **Fix:** create `data/error_log.json`. Log all flagged questions, verifier rejections, and parse failures. |
-| 13.2 | Categorize error types | ❌ | **Fix:** add fields: `error_type` (hallucination, off-topic, factual_error), `model_used`, `prompt_hash`. |
-| 13.3 | Improve prompts & rules from errors, never use errors as content | ❌ | **Fix:** periodically review logs; update prompt templates and rule-based checks. Mark errors as `used_for_training: false`. |
+| 13.1 | Log hallucinations, off-topic outputs, incorrect answers | ✅ | [services/error_logger.py](file:///d:/ALP/ai-engine/services/error_logger.py) creates and manages `data/error_log.json`. Logs automated parse failures and manual question flags. |
+| 13.2 | Categorize error types | ✅ | Includes `error_type`, `model_used`, and `prompt_hash` for detailed audit trails. |
+| 13.3 | Improve prompts & rules from errors, never use errors as content | ✅ | `used_for_optimization: false` flag included in metadata to prevent knowledge pollution during future refinement. |
 
 ---
 

@@ -139,7 +139,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
                                 {summaryError || itemsError ? (
                                     'We could not load your readiness data yet. Please refresh after uploads finish processing.'
                                 ) : (
-                                    `You are currently tracking at ${readiness}%. The system recommends focused remediation until you cross the 80% mark.`
+                                    `You are currently tracking at ${readiness}%. The system recommends focused revision until you cross the 80% mark.`
                                 )}
                             </p>
                             <div className="grid grid-cols-2 gap-4">
@@ -166,7 +166,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
                                     <div key={idx} className="group cursor-default">
                                         <div className="flex justify-between items-end mb-2">
                                             <span className="text-sm font-bold text-gray-300 group-hover:text-white transition-colors">{area.name}</span>
-                                            <span className="text-xs font-black text-amber-500">{area.score}%</span>
+                                            <span className="text-xs font-black text-amber-500">RISK: {area.score}%</span>
                                         </div>
                                         <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                                             <div className="h-full bg-amber-500 transition-all duration-700" style={{ width: `${area.score}%` }} />
@@ -201,20 +201,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
                                     <span className="text-[10px] font-black">{trendDelta >= 0 ? '+' : ''}{trendDelta}%</span>
                                 </div>
                             </div>
-                            <div className="flex items-end justify-between gap-3 h-24 relative">
+                            <div className="flex items-end justify-start gap-4 h-24 relative px-4">
                                 <div className="absolute inset-0 bg-gradient-to-t from-amber-500/5 to-transparent rounded-lg" />
                                 {trend.map((v, i) => (
-                                    <div key={i} className="flex-1 flex flex-col items-center gap-2 relative z-10 group">
-                                        <div className="absolute -top-6 opacity-0 group-hover:opacity-100 transition-opacity bg-amber-500 text-black text-[10px] font-black px-2 py-0.5 rounded shadow-lg">
+                                    <div key={i} className="w-12 flex flex-col items-center gap-2 relative z-10 group">
+                                        <div className="absolute -top-6 opacity-0 group-hover:opacity-100 transition-opacity bg-amber-500 text-black text-[10px] font-black px-2 py-0.5 rounded shadow-lg whitespace-nowrap">
                                             {v}%
                                         </div>
                                         <div
-                                            className={`w-full ${i === 2 ? 'bg-amber-500 shadow-lg shadow-amber-500/20' : 'bg-white/10'} hover:bg-amber-400 transition-all rounded-t-md cursor-pointer`}
+                                            className={`w-full transition-all duration-700 rounded-t-lg cursor-pointer ${i === trend.length - 1
+                                                ? 'bg-amber-500 shadow-[0_-4px_12px_rgba(251,191,36,0.2)]'
+                                                : 'bg-white/10 opacity-40 hover:opacity-80'
+                                                }`}
                                             style={{ height: `${v}%` }}
                                         />
-                                        <span className={`text-[10px] font-bold ${i === 2 ? 'text-amber-500' : 'text-gray-600'}`}>T{i + 1}</span>
+                                        <span className={`text-[10px] font-black tracking-tighter ${i === trend.length - 1 ? 'text-amber-500' : 'text-gray-700'}`}>
+                                            T{i + 1}
+                                        </span>
                                     </div>
                                 ))}
+                                {trend.length === 1 && (
+                                    <div className="flex-grow flex items-center justify-center">
+                                        <p className="text-[10px] font-black text-gray-800 uppercase tracking-widest">Awaiting more data...</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

@@ -91,11 +91,30 @@ class GeminiService:
                     if "```json" in clean_text:
                         extracted = clean_text.split("```json")[-1].split("```")[0].strip()
                         return json.loads(extracted)
+                    
+                    # Log Parse Failure as per PRD §13.2
+                    from services.error_logger import log_system_error
+                    log_system_error(
+                        error_type="parse_failure",
+                        model_used=model_id,
+                        prompt=prompt,
+                        offending_content=clean_text
+                    )
                     raise je
 
             except Exception as e:
                 last_exception = e
                 error_msg = str(e).upper()
+                
+                # Log General Generation Exception
+                from services.error_logger import log_system_error
+                log_system_error(
+                    error_type="generation_exception",
+                    model_used=model_id,
+                    prompt=prompt,
+                    offending_content=str(e)
+                )
+
                 if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg or "NOT_FOUND" in error_msg or "404" in error_msg:
                     logger.warning(f"Model {model_id} failed with {e}. Trying fallback...")
                     continue

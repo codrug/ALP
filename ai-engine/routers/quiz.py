@@ -121,7 +121,8 @@ def generate_quiz(doc_id: str, chapter_id: str = None):
         {
             "id": idx,
             "question": q["question"],
-            "options": q["options"]
+            "options": q["options"],
+            "gap_type": q.get("gap_type", "Foundation")
         } for idx, q in enumerate(valid_questions)
     ]
 
@@ -163,3 +164,45 @@ def submit_answer(quiz_id: str, question_index: int, selected_option: int):
         "gap_type": question.get("gap_type"),
         "question_details": question
     }
+
+
+from pydantic import BaseModel
+from typing import Optional
+
+class FlagRequest(BaseModel):
+    question_index: int
+    error_type: str # hallucination | off-topic | factual_error
+    note: Optional[str] = None
+
+@router.post("/{quiz_id}/flag")
+def flag_question(quiz_id: str, payload: FlagRequest):
+    """
+    Implements PRD §13.2 & §12.3: Categorize and log AI errors.
+    """
+    db = load_quizzes()
+    if quiz_id not in db:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+    
+    quiz = db[quiz_id]
+    if payload.question_index >= len(quiz["questions"]):
+        raise HTTPException(status_code=400, detail="Invalid question index")
+
+    question = quiz["questions"][payload.question_index]
+    
+    from services.error_logger import log_system_error
+    log_system_error(
+        error_type=payload.error_type,
+        model_used="gemini-current", # We can refine this later
+        prompt="[User Flagged Question]",
+        offending_content={
+            "question": question,
+            "user_note": payload.note
+        },
+        metadata={
+            "quiz_id": quiz_id,
+            "doc_id": quiz.get("doc_id"),
+            "user_id": quiz.get("user_id")
+        }
+    )
+
+    return {"status": "logged", "message": f"Error of type '{payload.error_type}' recorded."}

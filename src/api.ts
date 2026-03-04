@@ -77,13 +77,35 @@ const getUserId = (): string => {
 // --- API Functions ---
 
 /**
- * Upload a document with metadata and USER ID.
+ * Pre-parse a file to get chapters without saving it.
+ */
+export async function parseFilePreview(file: File, suggestedTopic?: string): Promise<{ chapters: any[], file_name: string }> {
+    const form = new FormData();
+    form.append('file', file);
+    if (suggestedTopic) form.append('suggested_topic', suggestedTopic);
+
+    const response = await fetch(`${API_BASE_URL}/ingest/parse`, {
+        method: 'POST',
+        body: form
+    });
+
+    if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || 'Parsing failed.');
+    }
+
+    return response.json();
+}
+
+/**
+ * Finalize upload with edited chapters.
  */
 export async function uploadDocument(params: {
     file: File;
     subject: string;
     topic: string;
     exam: string;
+    chapters: any[];
 }): Promise<UploadResponse> {
     const userId = getUserId();
 
@@ -92,26 +114,20 @@ export async function uploadDocument(params: {
     form.append('subject', params.subject);
     form.append('topic', params.topic);
     form.append('exam', params.exam);
-    form.append('user_id', userId); // [NEW] Send User ID
+    form.append('user_id', userId);
+    form.append('chapters_json', JSON.stringify(params.chapters));
 
-    try {
-        const response = await fetch(`${API_BASE_URL}/upload`, {
-            method: 'POST',
-            body: form
-        });
+    const response = await fetch(`${API_BASE_URL}/upload`, {
+        method: 'POST',
+        body: form
+    });
 
-        if (!response.ok) {
-            const payload = await response.json().catch(() => ({}));
-            throw new Error(payload.detail || 'Upload failed.');
-        }
-
-        return response.json();
-    } catch (err: any) {
-        if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
-            throw new Error(`Connection to AI Engine (${API_BASE_URL}) failed. Is the AI service running?`);
-        }
-        throw err;
+    if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || 'Finalization failed.');
     }
+
+    return response.json();
 }
 
 /**

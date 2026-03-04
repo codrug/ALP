@@ -212,11 +212,12 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                             </div>
 
                             <h2 className="text-5xl font-black text-white mb-2 uppercase tracking-tighter">Session Complete</h2>
+                            <div className="text-[10px] font-black text-amber-500/60 uppercase tracking-[0.3em] mb-2">Weighted Mastery Score</div>
                             <div className={`text-8xl font-black mb-4 ${isPassed ? 'text-green-500' : 'text-amber-500'}`}>{weightedScore}%</div>
 
                             <div className="flex flex-col items-center mb-8">
                                 <p className="text-gray-400 mb-2 font-light">
-                                    Weighted Mastery Rank • {score}/{questions.length} Correct
+                                    {score}/{questions.length} Correct
                                 </p>
                                 <div className="flex gap-2">
                                     {Array.from(new Set(weaknesses)).slice(0, 3).map((w, i) => (
@@ -231,16 +232,16 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                                 <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
                                     <div className="text-[10px] font-black text-blue-500 uppercase mb-1">Foundation</div>
                                     <div className="text-2xl font-black text-white">
-                                        {questions.filter(q => q.gap_type?.toLowerCase() === 'foundation').length > 0
-                                            ? Math.round((answerHistory.filter(h => h.correct && h.gap_type?.toLowerCase() === 'foundation').length / questions.filter(q => q.gap_type?.toLowerCase() === 'foundation').length) * 100)
+                                        {answerHistory.filter(h => h.gap_type?.toLowerCase() === 'foundation').length > 0
+                                            ? Math.round((answerHistory.filter(h => h.correct && h.gap_type?.toLowerCase() === 'foundation').length / answerHistory.filter(h => h.gap_type?.toLowerCase() === 'foundation').length) * 100)
                                             : 100}%
                                     </div>
                                 </div>
                                 <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
                                     <div className="text-[10px] font-black text-amber-500 uppercase mb-1">Application</div>
                                     <div className="text-2xl font-black text-white">
-                                        {questions.filter(q => q.gap_type?.toLowerCase() === 'application').length > 0
-                                            ? Math.round((answerHistory.filter(h => h.correct && h.gap_type?.toLowerCase() === 'application').length / questions.filter(q => q.gap_type?.toLowerCase() === 'application').length) * 100)
+                                        {answerHistory.filter(h => h.gap_type?.toLowerCase() === 'application').length > 0
+                                            ? Math.round((answerHistory.filter(h => h.correct && h.gap_type?.toLowerCase() === 'application').length / answerHistory.filter(h => h.gap_type?.toLowerCase() === 'application').length) * 100)
                                             : 100}%
                                     </div>
                                 </div>
@@ -253,7 +254,7 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                             <p className="text-gray-500 mb-10 leading-relaxed max-w-lg mx-auto">
                                 {isPassed
                                     ? "You've demonstrated command of the core concepts. Application gaps were weighted 1.5x in this evaluation."
-                                    : "We detected specific gaps in your understanding, particularly in Application-level reasoning. Your dashboard has been updated with remediation priorities."}
+                                    : `We detected specific gaps in your understanding, particularly in ${weaknesses.filter(w => w.toLowerCase() === 'application').length >= weaknesses.filter(w => w.toLowerCase() === 'foundation').length ? 'Application' : 'Foundation'}-level reasoning.`}
                             </p>
 
                             <div className="flex flex-col md:flex-row gap-4 justify-center">

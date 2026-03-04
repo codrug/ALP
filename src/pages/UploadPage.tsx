@@ -14,23 +14,25 @@ import {
     Info
 } from 'lucide-react';
 import { Chapter } from '../types';
-import { parseDocument, uploadDocument, updateDocument } from '../api';
+import { parseFilePreview, uploadDocument, updateDocument } from '../api';
 
 const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
     const [step, setStep] = useState<'details' | 'uploading' | 'parsing' | 'review'>('details');
     const [progress, setProgress] = useState(0);
     const [fileName, setFileName] = useState<string | null>(null);
+    const [originalFile, setOriginalFile] = useState<File | null>(null);
     const [fileId, setFileId] = useState<string | null>(null);
     const [chapters, setChapters] = useState<Chapter[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     // Form State
     const [subject, setSubject] = useState('');
     const [topic, setTopic] = useState('');
     const [isDragging, setIsDragging] = useState(false);
 
-    const subjects = ['Computer Networks', 'Operating Systems', 'Data Structures'];
+    const subjects = ['Computer Networks', 'Operating Systems'];
 
     // Simulation Logic
     const startProcess = async (file: File) => {
@@ -47,26 +49,13 @@ const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
 
         try {
             setFileName(file.name);
+            setOriginalFile(file);
             setStep('uploading');
-            setProgress(20);
+            setProgress(30);
 
-            const uploadResult = await uploadDocument({
-                file,
-                subject,
-                topic,
-                exam: 'GATE'
-            });
+            // Step 1: Parse without storing
+            const parseResult = await parseFilePreview(file, topic);
 
-            setFileId(uploadResult.file_id);
-
-            setProgress(100);
-            if (uploadResult.duplicate) {
-                setStatusMessage('Duplicate detected. Using existing file record.');
-            }
-
-            setStep('parsing');
-            setProgress(20);
-            const parseResult = await parseDocument(uploadResult.file_id);
             setProgress(100);
             setChapters(parseResult.chapters || []);
             setStep('review');
@@ -100,15 +89,24 @@ const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
     };
 
     const handleComplete = async () => {
-        if (!fileName || !fileId) return;
-        
+        if (!originalFile) return;
+
         try {
-            await updateDocument(fileId, {
-                chapters: chapters.map(c => ({ id: c.id, title: c.title, selected: c.selected }))
+            setIsSaving(true);
+            const uploadResult = await uploadDocument({
+                file: originalFile,
+                subject,
+                topic,
+                exam: 'GATE',
+                chapters: chapters.filter(c => c.selected)
             });
+
+            setFileId(uploadResult.file_id);
             onComplete();
         } catch (err: any) {
-            setError(err.message || 'Failed to save changes.');
+            setError(err.message || 'Failed to save curriculum.');
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -276,49 +274,13 @@ const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
                             </button>
                         </div>
 
-                        <div className="space-y-6 mb-12 max-h-[380px] overflow-y-auto pr-4 scrollbar-thin">
-                            <div className="flex items-center justify-between mb-6 sticky top-0 bg-[#111] py-2 z-10 border-b border-white/5">
-                                <div className="flex items-center gap-2">
-                                    <Info className="w-4 h-4 text-amber-500/50" />
-                                    <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Verify and Edit Parsed Topic Names</p>
-                                </div>
-                                <span className="text-[10px] font-bold text-gray-800 italic uppercase">User-isolated curriculum</span>
-                            </div>
-
-                            {chapters.map((chapter) => (
-                                <div
-                                    key={chapter.id}
-                                    className={`p-6 rounded-3xl border transition-all flex items-start gap-6 group ${chapter.selected ? 'bg-amber-500/[0.03] border-amber-500/30' : 'bg-white/[0.01] border-white/5 opacity-60'}`}
-                                >
-                                    <div
-                                        onClick={() => toggleChapter(chapter.id)}
-                                        className={`mt-1 shrink-0 w-7 h-7 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${chapter.selected ? 'bg-amber-500 border-amber-500 shadow-xl shadow-amber-500/20' : 'border-white/10 hover:border-white/20'}`}
-                                    >
-                                        {chapter.selected && <CheckCircle2 className="w-5 h-5 text-black" />}
-                                    </div>
-                                    <div className="flex-grow">
-                                        <div className="flex items-center gap-3 mb-4 group-hover:translate-x-1 transition-transform">
-                                            <div className="relative w-full">
-                                                <input
-                                                    type="text"
-                                                    value={chapter.title}
-                                                    onChange={(e) => updateChapterTitle(chapter.id, e.target.value)}
-                                                    className={`bg-transparent border-none p-0 focus:ring-0 text-lg font-black w-full transition-colors ${chapter.selected ? 'text-white' : 'text-gray-700'}`}
-                                                />
-                                                <div className={`absolute -bottom-1 left-0 h-px transition-all ${chapter.selected ? 'bg-amber-500/40 w-full' : 'bg-transparent w-0'}`} />
-                                            </div>
-                                            <Edit3 className={`w-4 h-4 shrink-0 text-gray-600 transition-opacity ${chapter.selected ? 'opacity-50' : 'opacity-0'}`} />
-                                        </div>
-                                        <div className="flex flex-wrap gap-2.5">
-                                            {chapter.concepts.filter(c => c.toLowerCase() !== 'untitled section').map((concept, idx) => (
-                                                <span key={idx} className="text-[10px] font-bold px-3 py-1.5 bg-white/[0.02] text-gray-600 rounded-xl border border-white/5 tracking-tight">
-                                                    {concept}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
+                        <div className="py-12 text-center">
+                            <p className="text-gray-500 font-light italic mb-2">
+                                Ready to synchronize all knowledge modules from this source.
+                            </p>
+                            <p className="text-[10px] font-black text-amber-500/40 uppercase tracking-[0.2em]">
+                                Verification passed &bull; Isolated environment ready
+                            </p>
                         </div>
 
                         <div className="flex gap-6">
