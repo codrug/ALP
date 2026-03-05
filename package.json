@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "npx concurrently \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:ai\"",
+    "dev": "npx concurrently \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:aiengine\"",
     "dev:client": "npx vite",
     "dev:server": "npm run dev --prefix server",
-    "dev:ai": ".\\ai-engine\\venv\\Scripts\\python.exe -m uvicorn --app-dir ai-engine main:app --reload --port 8000 --host localhost",
+    "dev:aiengine": "python -m uvicorn --app-dir ai-engine main:app --reload --port 8000 --host localhost",
     "build": "vite build",
     "preview": "vite preview"
   },

@@ -122,3 +122,44 @@ def submit_answer(quiz_id: str, question_index: int, selected_option: int):
         "explanation": question["explanation"],
         "gap_type": question.get("gap_type") if not is_correct else None
     }
+
+@router.post("/{quiz_id}/remediate")
+def get_remediation(quiz_id: str):
+    """
+    Generates a personalized remediation study guide based on quiz weaknesses.
+    """
+    db = load_quizzes()
+    if quiz_id not in db:
+        raise HTTPException(status_code=404, detail="Quiz session not found")
+    
+    quiz = db[quiz_id]
+    weaknesses = list(set(quiz.get("weaknesses", [])))
+    
+    if not weaknesses:
+        return {"remediation": "Excellent work! You've mastered all concepts in this set. Keep practicing to maintain your proficiency."}
+
+    # Fetch Document Context
+    doc_id = quiz["doc_id"]
+    doc_path = DOC_DIR / doc_id
+    text_source = doc_path / "raw.txt"
+    
+    # Use chapter text if available
+    chapter_id = quiz.get("chapter_id")
+    if chapter_id:
+        chunk_path = doc_path / f"chunk_{chapter_id}.txt"
+        if chunk_path.exists():
+            text_source = chunk_path
+
+    if not text_source.exists():
+        raise HTTPException(status_code=404, detail="Source context for remediation not found")
+
+    context_text = text_source.read_text(encoding="utf-8")
+
+    # Call Gemini for remediation
+    remediation_text = GeminiService.generate_remediation(
+        weak_concepts=weaknesses,
+        gap_type="Conceptual", 
+        context=context_text
+    )
+
+    return {"remediation": remediation_text}

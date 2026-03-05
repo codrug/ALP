@@ -16,7 +16,8 @@ import {
 import { Chapter } from '../types';
 import { parseDocument, uploadDocument, updateDocument } from '../api';
 
-const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
+const UploadPage: React.FC<{ onComplete: (docId: string) => void }> = ({ onComplete }) => {
+
     const [step, setStep] = useState<'details' | 'uploading' | 'parsing' | 'review'>('details');
     const [progress, setProgress] = useState(0);
     const [fileName, setFileName] = useState<string | null>(null);
@@ -101,12 +102,13 @@ const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
 
     const handleComplete = async () => {
         if (!fileName || !fileId) return;
-        
+
         try {
             await updateDocument(fileId, {
                 chapters: chapters.map(c => ({ id: c.id, title: c.title, selected: c.selected }))
             });
-            onComplete();
+            onComplete(fileId);
+
         } catch (err: any) {
             setError(err.message || 'Failed to save changes.');
         }

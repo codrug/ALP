@@ -20,8 +20,10 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // [NEW] State to track which document is being quizzed
+  // [NEW] State to track which document is being quizzed and the result
   const [quizDocId, setQuizDocId] = useState<string | null>(null);
+  const [lastQuizId, setLastQuizId] = useState<string | null>(null);
+
 
   // Curriculum Data State
   const [curriculumItems, setCurriculumItems] = useState<CurriculumItem[]>([]);
@@ -59,10 +61,19 @@ export default function App() {
     setView('landing');
   };
 
-  const handleUploadComplete = async () => {
+  const handleUploadComplete = async (docId: string) => {
     await refreshDocuments();
-    setView('dashboard'); // Redirect to dashboard after upload
+    setQuizDocId(docId);
+    setLastQuizId(null); // Reset last quiz on new upload
+    setView('quiz');
   };
+
+  const handleQuizComplete = (quizId: string) => {
+    setLastQuizId(quizId);
+    setView('dashboard');
+  };
+
+
 
   if (loading) {
     return (
@@ -113,8 +124,10 @@ export default function App() {
             setView={(v) => setView(v as ViewState)}
             setQuizDocId={setQuizDocId} // Pass setter to Dashboard
             itemsError={itemsError}
+            lastQuizId={lastQuizId}
           />
         )}
+
 
         {safeView === 'settings' && user && <SettingsPage onLogout={handleLogout} user={user} />}
 
@@ -133,7 +146,9 @@ export default function App() {
           <QuizView
             docId={quizDocId}
             setView={(v) => setView(v as ViewState)}
+            onComplete={handleQuizComplete}
           />
+
         )}
 
       </main>

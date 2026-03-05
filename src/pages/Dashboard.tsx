@@ -42,7 +42,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
                 } else {
                     // Reset state for clean slate if no content
                     setReadiness(0);
-                    setTrend([0,0,0]);
+                    setTrend([0, 0, 0]);
                     setRiskAreas([]);
                 }
                 setSummaryError(null);
@@ -62,18 +62,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
 
     // Smart Action Logic
     const handlePrimaryAction = () => {
-        if (!hasContent || documents.length === 0) {
-            // Case 1: No content -> Upload
+        if (documents.length === 0) {
+            // Case 1: No documents at all -> Upload
             setView('upload');
-        } else if (isMasteryAchieved) {
+        } else if (isMasteryAchieved && hasContent) {
             // Case 2: Mastery Achieved -> Suggest Uploading New Content
             setView('upload');
         } else {
-            // Case 3: Gaps Detected -> Force Quiz Loop
+            // Case 3: Gaps Detected OR first doc uploaded -> Start Assessment
             setQuizDocId(documents[0].id);
             setView('quiz');
         }
     };
+
 
     return (
         <div className="pt-28 pb-24 px-6 max-w-7xl mx-auto">
@@ -216,9 +217,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
 
                     <p className="text-gray-400 max-w-xl mx-auto font-light mb-10 leading-relaxed">
                         {!hasContent ? "System is waiting for source material. Upload notes to initialize the Mastery Engine." :
-                         isMasteryAchieved
-                            ? "Your readiness metric indicates strong command of current topics. It is recommended to expand your syllabus coverage."
-                            : "Your foundation in current topics is weak. Recommended: 15-minute diagnostic loop to eliminate micro-gaps."}
+                            isMasteryAchieved
+                                ? "Your readiness metric indicates strong command of current topics. It is recommended to expand your syllabus coverage."
+                                : "Your foundation in current topics is weak. Recommended: 15-minute diagnostic loop to eliminate micro-gaps."}
                     </p>
 
                     <div className="flex flex-col md:flex-row gap-4">
@@ -231,11 +232,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
                                     : 'bg-amber-500 hover:bg-amber-400 shadow-amber-500/20'}
                             `}
                         >
-                            {isMasteryAchieved && hasContent ? "Upload New Material" : hasContent ? "Resume Mastery Loop" : "Initialize Engine"}
+                            {documents.length > 0 ? "Begin First Assessment" : hasContent ? "Resume Mastery Loop" : "Initialize Engine"}
                             {isMasteryAchieved && hasContent
                                 ? <UploadCloud className="w-6 h-6" />
                                 : <ChevronRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
                             }
+
                         </button>
 
                         {/* Secondary Button (Only visible if Mastery is Achieved AND content exists) */}

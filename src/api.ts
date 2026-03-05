@@ -210,3 +210,20 @@ export async function fetchDashboardSummary(): Promise<DashboardSummaryDto> {
         throw err;
     }
 }
+
+/**
+ * Fetch Remediation study guide.
+ */
+export async function getRemediation(quizId: string): Promise<string> {
+    const response = await fetch(`${API_BASE_URL}/quiz/${quizId}/remediate`, {
+        method: 'POST'
+    });
+
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || 'Failed to fetch remediation.');
+    }
+
+    const data = await response.json();
+    return data.remediation;
+}

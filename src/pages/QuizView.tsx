@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, AlertCircle, CheckCircle, XCircle, Loader2, Trophy, UploadCloud, RefreshCw } from 'lucide-react';
-import { API_BASE_URL } from '../api';
+import { ArrowRight, AlertCircle, CheckCircle, XCircle, Loader2, Trophy, BookOpen, RefreshCw } from 'lucide-react';
+import { API_BASE_URL, getRemediation } from '../api';
 
 interface QuizViewProps {
     docId: string | null;
-    setView: (v: 'dashboard' | 'upload') => void; // Added 'upload' capability
+    setView: (v: 'dashboard' | 'upload') => void;
 }
 
 export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
@@ -18,10 +18,13 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
     const [currentQ, setCurrentQ] = useState(0);
     const [selected, setSelected] = useState<number | null>(null);
     const [feedback, setFeedback] = useState<any>(null);
-    const [score, setScore] = useState(0); // Track correct answers
+    const [score, setScore] = useState(0);
     const [isFinished, setIsFinished] = useState(false);
 
-    // 1. Generate Quiz
+    const [remediation, setRemediation] = useState<string | null>(null);
+    const [loadingRemediation, setLoadingRemediation] = useState(false);
+    const [showRemedy, setShowRemedy] = useState(false);
+
     const startQuiz = async () => {
         if (!docId) return;
         setLoading(true);
@@ -47,7 +50,6 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
         startQuiz();
     }, [docId]);
 
-    // 2. Submit Answer
     const handleSubmit = async () => {
         if (!quizId || selected === null) return;
 
@@ -62,51 +64,151 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
         }
     };
 
-    // 3. Next Question or Finish
     const handleNext = () => {
         if (currentQ < questions.length - 1) {
             setCurrentQ(prev => prev + 1);
             setSelected(null);
             setFeedback(null);
         } else {
-            setIsFinished(true); // Trigger Result Screen
+            setIsFinished(true);
+            fetchRemediation();
         }
     };
 
-    // 4. Result Screen Logic
+    const fetchRemediation = async () => {
+        if (!quizId) return;
+        setLoadingRemediation(true);
+        try {
+            const content = await getRemediation(quizId);
+            setRemediation(content);
+        } catch (err) {
+            console.error("Remediation failed", err);
+        } finally {
+            setLoadingRemediation(false);
+        }
+    };
+
     if (isFinished) {
         const percentage = Math.round((score / questions.length) * 100);
         const isPassed = percentage >= 80;
 
-        return (
-            <div className="min-h-screen pt-28 px-6 flex items-center justify-center">
-                <div className="max-w-xl w-full bg-[#111] border border-white/10 rounded-3xl p-10 text-center relative overflow-hidden">
-                    {/* Background Glow */}
-                    <div className={`absolute top-0 right-0 w-64 h-64 blur-[100px] rounded-full -translate-y-1/2 translate-x-1/2 ${isPassed ? 'bg-green-500/10' : 'bg-amber-500/10'}`} />
+        let criticalLevel = "Low";
+        let criticalColor = "text-green-500";
+        if (percentage < 50) {
+            criticalLevel = "High";
+            criticalColor = "text-red-500";
+        } else if (percentage < 80) {
+            criticalLevel = "Medium";
+            criticalColor = "text-amber-500";
+        }
 
-                    <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${isPassed ? 'bg-green-500/10' : 'bg-amber-500/10'}`}>
-                        {isPassed ? <Trophy className="w-10 h-10 text-green-500" /> : <RefreshCw className="w-10 h-10 text-amber-500" />}
+        if (showRemedy) {
+            return (
+                <div className="min-h-screen pt-28 pb-20 px-6 max-w-4xl mx-auto flex flex-col">
+                    <div className="bg-[#111] border border-amber-500/20 rounded-3xl p-10 relative overflow-hidden animate-in fade-in slide-in-from-bottom-4 flex flex-col min-h-[500px]">
+                        <div className="flex flex-col flex-1">
+                            <div className="flex items-center justify-between mb-8">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-amber-500/10 rounded-lg">
+                                        <BookOpen className="w-6 h-6 text-amber-500" />
+                                    </div>
+                                    <h3 className="text-2xl font-black text-white uppercase tracking-tighter">Targeted Study Guide</h3>
+                                </div>
+                                <button onClick={() => setShowRemedy(false)} className="text-gray-400 hover:text-white transition-colors">
+                                    View Score
+                                </button>
+                            </div>
+
+                            <div className="flex-1 bg-white/[0.02] border border-white/5 rounded-2xl p-8 mb-10">
+                                {loadingRemediation ? (
+                                    <div className="h-full flex flex-col items-center justify-center gap-4">
+                                        <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+                                        <p className="text-gray-500 text-sm font-bold">AI is synthesizing your gap analysis...</p>
+                                    </div>
+                                ) : remediation ? (
+                                    <div className="prose prose-invert max-w-none">
+                                        <div className="text-gray-300 leading-relaxed whitespace-pre-wrap text-lg">
+                                            {remediation}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="h-full flex items-center justify-center">
+                                        <p className="text-gray-500 italic text-center">No remediation data available.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="pt-6 border-t border-white/10 flex flex-col md:flex-row gap-4 mt-auto">
+                            <button
+                                onClick={() => {
+                                    // Reset state for re-attempt
+                                    setCurrentQ(0);
+                                    setSelected(null);
+                                    setFeedback(null);
+                                    setScore(0);
+                                    setIsFinished(false);
+                                    setRemediation(null);
+                                    setShowRemedy(false);
+                                    startQuiz();
+                                }}
+                                className="flex-1 bg-amber-500 text-black font-black py-4 rounded-xl hover:bg-amber-400 transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
+                            >
+                                <RefreshCw className="w-5 h-5" />
+                                Attempt Again
+                            </button>
+                            <button
+                                onClick={() => setView('dashboard')}
+                                className="flex-1 bg-white/5 text-gray-400 font-bold py-4 rounded-xl hover:bg-white/10 transition-all flex items-center justify-center gap-2 border border-white/5"
+                            >
+                                <ArrowRight className="w-5 h-5" />
+                                Back to Dashboard
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        return (
+            <div className="min-h-screen pt-28 pb-20 px-6 max-w-4xl mx-auto flex flex-col">
+                <div className="bg-[#111] border border-white/10 rounded-3xl p-10 relative overflow-hidden">
+                    <h2 className="text-3xl font-black text-white mb-8 uppercase tracking-tighter text-center">Results Dashboard</h2>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                        <div className="bg-white/5 border border-white/10 p-8 rounded-2xl flex flex-col items-center justify-center text-center">
+                            <span className="text-gray-400 font-bold mb-3 uppercase tracking-wider text-sm">Results</span>
+                            <span className={`text-5xl font-black ${isPassed ? 'text-green-500' : 'text-amber-500'}`}>{percentage}%</span>
+                            <span className="text-sm font-medium text-gray-500 mt-3">{score} out of {questions.length} correct</span>
+                        </div>
+
+                        <div className="bg-white/5 border border-white/10 p-8 rounded-2xl flex flex-col items-center justify-center text-center">
+                            <span className="text-gray-400 font-bold mb-3 uppercase tracking-wider text-sm">Status</span>
+                            <span className={`text-2xl font-black ${isPassed ? 'text-green-500' : 'text-amber-500'}`}>
+                                {isPassed ? "Mastery Achieved" : "Gap Detected"}
+                            </span>
+                        </div>
+
+                        <div className="bg-white/5 border border-white/10 p-8 rounded-2xl flex flex-col items-center justify-center text-center">
+                            <span className="text-gray-400 font-bold mb-3 uppercase tracking-wider text-sm">Critical Level</span>
+                            <span className={`text-3xl font-black ${criticalColor}`}>{criticalLevel}</span>
+                        </div>
                     </div>
 
-                    <h2 className="text-4xl font-black text-white mb-2">{percentage}%</h2>
-                    <h3 className="text-xl font-bold text-gray-300 mb-6">
-                        {isPassed ? "Mastery Achieved!" : "Gap Detected"}
-                    </h3>
-
-                    <p className="text-gray-400 mb-10 leading-relaxed">
-                        {isPassed
-                            ? "You've demonstrated strong command of this topic. You can proceed to the next module or deepen your current knowledge."
-                            : "We found some foundation gaps. The system has updated your dashboard with targeted remediation steps."}
-                    </p>
-
-                    <div className="space-y-4">
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <button
+                            onClick={() => setShowRemedy(true)}
+                            className="flex-1 bg-amber-500 text-black font-black py-4 rounded-xl hover:bg-amber-400 transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
+                        >
+                            <BookOpen className="w-5 h-5" />
+                            Remedy Guide
+                        </button>
                         <button
                             onClick={() => setView('dashboard')}
-                            className={`w-full font-black py-4 rounded-xl transition-all flex items-center justify-center gap-2 ${isPassed ? 'bg-green-500 text-black hover:bg-green-400' : 'bg-white text-black hover:bg-gray-200'
-                                }`}
+                            className="flex-1 bg-white/5 text-gray-400 font-bold py-4 rounded-xl hover:bg-white/10 transition-all flex items-center justify-center gap-2 border border-white/5"
                         >
                             <ArrowRight className="w-5 h-5" />
-                            View Results Dashboard
+                            Return to Dashboard
                         </button>
                     </div>
                 </div>
@@ -150,7 +252,6 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
 
     return (
         <div className="min-h-screen pt-28 px-6 max-w-4xl mx-auto">
-            {/* Progress Bar */}
             <div className="w-full h-1 bg-white/10 rounded-full mb-12">
                 <div
                     className="h-full bg-amber-500 transition-all duration-500"
@@ -191,7 +292,6 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                     ))}
                 </div>
 
-                {/* Immediate Feedback Card */}
                 {feedback && (
                     <div className="mt-8 bg-white/5 border-l-4 border-amber-500 p-6 rounded-r-xl animate-in fade-in slide-in-from-bottom-4">
                         <h4 className="text-white font-bold mb-2 flex items-center gap-2">

@@ -1,5 +1,4 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query
-print("FastAPI loading...")
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from pathlib import Path
@@ -21,19 +20,23 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 load_dotenv(os.path.join(root_dir, '.env'))
 
-# Import the Quiz Router
-from routers import quiz
-
-app = FastAPI()
-
-# Include the Quiz Router
-app.include_router(quiz.router)
-
+# Data Paths - Define these early to avoid initialization order issues
 DATA_DIR = Path(current_dir) / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 DOC_DIR = DATA_DIR / "documents"
 DOC_INDEX = DATA_DIR / "documents.json"
 QUIZ_INDEX = DATA_DIR / "quizzes.json"
+
+logger = logging.getLogger("alp")
+logging.basicConfig(level=logging.INFO)
+
+# Import dependencies after paths
+from routers import quiz
+
+app = FastAPI()
+
+# Include routes later
+app.include_router(quiz.router)
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
 MAX_FILE_SIZE = 5 * 1024 * 1024
@@ -42,8 +45,6 @@ QDRANT_URL = os.getenv("QDRANT_URL", "")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "alp_chunks")
 EMBED_DIM = int(os.getenv("EMBED_DIM", "768"))
-
-logger = logging.getLogger("alp")
 
 # Allow CORS for frontend
 origins = [
@@ -101,11 +102,19 @@ def ensure_storage() -> None:
 
 def load_documents() -> list[dict]:
     ensure_storage()
+    if not DOC_INDEX.exists() or DOC_INDEX.stat().st_size < 2:
+        return []
     with DOC_INDEX.open("r", encoding="utf-8") as handle:
         try:
-            return json.load(handle)
-        except json.JSONDecodeError:
+            content = handle.read().strip()
+            if not content:
+                return []
+            return json.loads(content)
+        except Exception as e:
+            logger.error(f"FATAL: Could not load documents.json: {e}")
+            # [CRITICAL] Don't return [] if we suspect data is there but blocked
             return []
+
 
 
 def save_documents(documents: list[dict]) -> None:
