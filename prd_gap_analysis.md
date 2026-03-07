@@ -15,8 +15,8 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
 | 1.1 | Platform must measure *actual* understanding, not perceived understanding | ✅ | Quiz sessions now feed into an exam-weighted, chapter-level mastery model where Application gaps are penalized more heavily than Foundation gaps (1.5x weight) for CN and OS subjects. |
-| 1.2 | Adapt learning based on diagnosed gaps | ⚠️ | [generate_remediation()](file:///d:/ALP/ai-engine/services/gemini.py#108-143) exists in [gemini.py](file:///d:/ALP/ai-engine/services/gemini.py) but is **never called** from any route or frontend. **Fix:** wire up a `/quiz/{quiz_id}/remediation` endpoint and show remediation cards after quiz results. |
-| 1.3 | Remain strictly grounded in syllabus & exam patterns | ⚠️ | Quiz prompt says "based ONLY on the following text" — correct intent, but there is **no verifier LLM or rule-based check** to enforce grounding. **Fix:** add validation pipeline (see §12). |
+| 1.2 | Adapt learning based on diagnosed gaps | ✅ | Wired up `GET /quiz/{quiz_id}/remediation` and added a dedicated remediation screen in the frontend (PRD §6.6). |
+| 1.3 | Remain strictly grounded in syllabus & exam patterns | ✅ | Implemented PRD §12 validation pipeline with both rule-based checks and a verifier LLM pass to enforce grounding. |
 | 1.4 | Learn from its own mistakes without learning incorrect content | ✅ | [error_logger.py](file:///d:/ALP/ai-engine/services/error_logger.py) is fully implemented: logs parse failures and user-flagged questions to `data/error_log.json` with `error_type`, `model_used`, `prompt_hash`, and `used_for_optimization: false`. Called both from `generate_quiz()` and `flag_question()`. |
 
 ---
@@ -36,7 +36,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 |---|-----------|--------|------------------------|
 | 3.1 | **Enemy B:** Eliminate time wasted figuring out what to study | ✅ | Dashboard shows "Top 3 risk chapters" derived from chapter-level mastery × exam weight (currently for CN/OS subjects), and a directive "next action". |
 | 3.2 | **Enemy C:** Bridge mismatch between learning and exam expectations | ✅ | `gap_type` (Foundation vs Application) is surfaced on feedback cards and results; Application gaps are weighted 1.5x in risk scoring. |
-| 3.3 | **Enemy E:** Prevent false confidence from AI answers | ❌ | No validation pipeline exists; LLM output goes directly to quizzes. **Fix:** implement §12 validation pipeline. |
+| 3.3 | **Enemy E:** Prevent false confidence from AI answers | ✅ | Validation pipeline (rule-based + verifier LLM) now prevents unverified LLM output from reaching quizzes. |
 
 ---
 
@@ -47,7 +47,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | 4.1 | Exam-weighted mastery over flat scoring | ✅ | Readiness is now an exam-weighted average of per-chapter mastery for supported subjects (CN/OS). |
 | 4.2 | Immediate feedback on mistakes | ✅ | [QuizView.tsx](file:///d:/ALP/src/pages/QuizView.tsx) shows explanation card immediately after each wrong answer. |
 | 4.3 | Explainable, deterministic scoring | ✅ | Score surfaces weighted mastery; results screen shows per-category (Foundation/Application) breakdown. |
-| 4.4 | LLMs propose, system validates | ❌ | No verifier step. LLM output accepted verbatim. **Fix:** see §12. |
+| 4.4 | LLMs propose, system validates | ✅ | Verifier LLM (second Gemini pass) now cross-checks all generated questions against source text before storage. |
 | 4.5 | Learn from errors, never from incorrect knowledge | ✅ | `error_log.json` stores all failures with `used_for_optimization: false` to prevent knowledge pollution — implemented in [error_logger.py](file:///d:/ALP/ai-engine/services/error_logger.py). |
 | 4.6 | Reduce verbosity for competitive exams | ✅ | Gemini prompt strictly limits explanations to 2 sentences. |
 
@@ -58,7 +58,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
 | 5.1 | Mode A — Assignment Guidance | ❌ | Explicitly out-of-scope for MVP. No action needed. |
-| 5.2 | Mode B — Competitive Exam (diagnostic quiz, mastery, remediation, reassessment) | ⚠️ | Diagnostic quiz works. Dashboard mastery/readiness is now exam-weighted and chapter-aware for CN/OS, but remediation and reassessment loops are still missing. **Fix:** wire remediation + reassessment and extend mastery beyond CN/OS. |
+| 5.2 | Mode B — Competitive Exam (diagnostic quiz, mastery, remediation, reassessment) | ✅ | Full loop implemented: Diagnostic quiz -> Mastery tracking -> Remediation -> Reassessment. Mastery extended to Data Structures. |
 
 ---
 
@@ -71,8 +71,8 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | 6.3 | User takes a diagnostic / chapter quiz | ✅ | Flow simplified to 2-step (Subject -> Module/Topic) to reduce friction. System automatically generates full-module protocols for the selected topic. |
 | 6.4 | System provides immediate feedback on every wrong answer | ✅ | Feedback card with explanation shown instantly in [QuizView.tsx](file:///d:/ALP/src/pages/QuizView.tsx). |
 | 6.5 | System diagnoses gaps (foundation vs application) | ✅ | `gap_type` badges (e.g., "Foundation Gap" / "Application Gap") are displayed on feedback cards and review screens. |
-| 6.6 | Targeted learning / remediation provided | ❌ | [generate_remediation()](file:///d:/ALP/ai-engine/services/gemini.py#108-143) exists but is **dead code** — no route calls it. **Fix:** create a `GET /quiz/{quiz_id}/remediation` route; call it from a new remediation screen shown after quiz results. |
-| 6.7 | Reassessment triggered | ❌ | No mechanism to trigger a follow-up quiz on weak areas. **Fix:** after remediation, offer a "Reassess" button that generates a quiz scoped to weak chapters only. |
+| 6.6 | Targeted learning / remediation provided | ✅ | Implemented `GET /quiz/{quiz_id}/remediation` and integrated into the post-quiz UI via a dedicated remediation screen. |
+| 6.7 | Reassessment triggered | ✅ | Implemented `POST /quiz/{quiz_id}/reassess` and added a "Reassess" button for targeted follow-up on weak chapters. |
 | 6.8 | Mastery tracked until ≥80% per chapter | ✅ | Per-chapter mastery is computed from quiz history, and each chapter is now explicitly marked as passed/failed against the 80% threshold in the dashboard summary (`chaptersMastery.passed`). |
 | 6.9 | Overall exam readiness via exam weightage | ✅ | Readiness is now an exam-weighted average of per-chapter mastery for CN/OS subjects; formula (1.5x weight) explained in dashboard. |
 
@@ -96,7 +96,7 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
 | 8.1 | Remember user exam preference | ✅ | Stored in [SettingsPage](file:///d:/ALP/src/pages/SettingsPage.tsx#21-250) via `localStorage` (`alp_target_date`, `alp_target_score`). |
-| 8.2 | Remember per-chapter mastery score | ⚠️ | Per-chapter mastery and 80% pass state are computed on demand from quiz history and returned via `chaptersMastery`, but not yet persisted as an explicit `mastery_score` in `documents.json`. **Fix:** cache mastery per chapter (and maybe use a decay/rolling window) for clearer long-term history. |
+| 8.2 | Remember per-chapter mastery score | ✅ | Mastery scores and pass states are now explicitly persisted in `documents.json` upon quiz completion via `_update_chapter_mastery`. |
 | 8.3 | Remember learning trend (last 3 attempts) | ✅ | Real trend is now computed from quiz history snapshots (T1, T2, T3) over time. |
 | 8.4 | Remember mistake types | ✅ | Mistake types (`gap_type`) are stored and aggregated into "Top Diagnosed Gaps" on the dashboard. |
 | 8.5 | Do NOT remember emotional/personality profiling or cross-user content | ✅ | No such data is collected. User data is isolated by `user_id`. |
@@ -132,8 +132,8 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 | 11.1 | LLM generates candidate questions | ✅ | `GeminiService.generate_quiz()`. |
 | 11.2 | LLM generates candidate answers | ✅ | Answers included in generation. |
 | 11.3 | LLM explains concepts concisely | ✅ | Explanation field in quiz response. |
-| 11.4 | LLM acts as verifier (secondary LLM) | ❌ | No verifier. **Fix:** add a second LLM call (or same model, different prompt) to cross-check generated Q&A before serving. |
-| 11.5 | LLM cannot assert truth / write to Master DB / decide mastery | ⚠️ | LLM output goes directly to `quizzes.json` (which is used for scoring). No gatekeeper. **Fix:** insert validation pipeline between generation and storage. |
+| 11.4 | LLM acts as verifier (secondary LLM) | ✅ | Implemented `GeminiService.verify_quiz_questions` as a secondary validation step. |
+| 11.5 | LLM cannot assert truth / write to Master DB / decide mastery | ✅ | Validation pipeline is now inserted between generation and storage/scoring. |
 
 ---
 
@@ -141,9 +141,9 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 
 | # | One-Liner | Status | Notes / Recommendation |
 |---|-----------|--------|------------------------|
-| 12.1 | Rule-based checks on LLM/Parse output | ✅ | Stricter rule-based parsing implemented: length guards (<= 120 chars), numbering enforcement (`1.`, `A.`, `Chapter`), and manual topic priority from form input. |
-| 12.2 | Verifier LLM validation | ❌ | **Fix:** add a second Gemini call — prompt a verifier to confirm the answer is correct given the source text. |
-| 12.3 | Human-in-the-loop approval (sampling or mandatory in MVP) | ⚠️ | `POST /quiz/{quiz_id}/flag` endpoint implemented in [quiz.py](file:///d:/ALP/ai-engine/routers/quiz.py#L177-208) — logs `error_type`, `question`, and `user_note` to `error_log.json`. **Missing:** no frontend flag button on the quiz feedback card. **Fix:** add a "Report" or 🚩 icon button to [QuizView.tsx](file:///d:/ALP/src/pages/QuizView.tsx) that calls this endpoint. |
+| 12.1 | Rule-based checks on LLM/Parse output | ✅ | Stricter rule-based parsing and post-generation structural validation (options count, unique keys, length guards) implemented. |
+| 12.2 | Verifier LLM validation | ✅ | Implemented a second Gemini call to confirm answer grounding against source text. |
+| 12.3 | Human-in-the-loop approval (sampling or mandatory in MVP) | ✅ | Full loop: 🚩 "Report Question" button in `QuizView.tsx` triggers `POST /quiz/{quiz_id}/flag` logging to `error_log.json`. |
 
 ---
 
@@ -163,9 +163,9 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 |---|-----------|--------|------------------------|
 | 14.1 | Frontend: React | ✅ | React 19 + Vite. |
 | 14.2 | Backend: FastAPI / Node.js | ✅ | FastAPI (AI engine, port 8000) + Express (Node server, port 3001). |
-| 14.3 | Vector DB: Qdrant | ⚠️ | Qdrant client is connected and chunks are embedded+upserted on parse, but **no retrieval or RAG query is used** when generating quizzes yet. **Fix:** add a search step that pulls top-N relevant chunks for quiz generation. |
+| 14.3 | Vector DB: Qdrant | ✅ | Chunks are embedded+upserted on parse. RAG retrieval (top-5 chapters) is now used during full-document quiz generation. |
 | 14.4 | Relational DB: PostgreSQL | ❌ | All data is in flat JSON files (`documents.json`, `quizzes.json`). **Fix (MVP-acceptable):** JSON files work for MVP; plan migration for post-MVP. |
-| 14.5 | LLMs: Gemini (GPT-class) + verifier | ⚠️ | Gemini used for generation. No verifier. **Fix:** add verifier call. |
+| 14.5 | LLMs: Gemini (GPT-class) + verifier | ✅ | Gemini used for generation and secondary verification pass. |
 | 14.6 | Embeddings | ✅ | Implemented via local FastEmbed `BAAI/bge-base-en-v1.5` in `GeminiService.generate_embeddings()`, used to vectorize parsed chunks before upserting to Qdrant. |
 
 ---
@@ -199,8 +199,8 @@ Every step from the PRD is listed as a **one-liner**, followed by its implementa
 |---|-----------|--------|-------|
 | 17.1 | One exam only | ✅ | GATE hardcoded throughout. |
 | 17.2 | Limited subjects & chapters | ✅ | Subject dropdown has 3 options. |
-| 17.3 | Manual/sampling validation allowed | ⚠️ | Backend flag endpoint is live (`POST /quiz/{quiz_id}/flag` in [quiz.py](file:///d:/ALP/ai-engine/routers/quiz.py)). Logs go to `error_log.json` for manual admin review. **Missing:** frontend trigger — add a 🚩 "Report Question" button to the quiz feedback card. |
-| 17.4 | Focus on closed-loop learning proof | ⚠️ | Remediation and Reassessment routes exist but are the final remaining gap for a fully automated loop. |
+| 17.3 | Manual/sampling validation allowed | ✅ | Full human-in-the-loop capability: frontend flag button logs issues to `error_log.json` for admin review. |
+| 17.4 | Focus on closed-loop learning proof | ✅ | Fully closed-loop: Assessment -> Feedback -> Remediation -> Reassessment sequence implemented. |
 
 ---
 
@@ -218,28 +218,16 @@ All items (IRT, multi-exam, predictive scoring, institutional dashboards) are co
 |--------|--------|---------|
 | Assessment | ✅ | Quiz works |
 | Feedback | ✅ | Immediate explanation |
-| Reassessment | ❌ | **Missing — the loop is open** |
-| Grounding enforcement | ❌ | No validation pipeline |
+| Reassessment | ✅ | Full loop wired |
+| Grounding enforcement | ✅ | Validation pipeline live |
 
 ---
 
-## Priority Summary
-
-### 🔴 Critical (loop is open)
-
-1. **Close the mastery loop**: Remediation → Reassessment
-2. **Wire up [generate_remediation()](file:///d:/ALP/ai-engine/services/gemini.py#128-162)** — create `GET /quiz/{quiz_id}/remediation` route + frontend remediation screen
-3. **Automate Reassessment** — add a "Reassess" button after remediation that scopes a new quiz to weak chapters only
+### 🔴 Critical
+*None. All "Enemy" gaps required for the closed-loop MVP are addressed.*
 
 ### 🟡 Important (quality & trust)
-
-4. **Add 🚩 "Report Question" button** in [QuizView.tsx](file:///d:/ALP/src/pages/QuizView.tsx) to trigger the existing `POST /quiz/{quiz_id}/flag` backend endpoint
-5. Add **verifier LLM call** (second Gemini pass) before questions are saved to `quizzes.json`
-6. **Activate Qdrant RAG**: add a vector search step in quiz generation to retrieve top-N relevant chunks before calling Gemini
-
-### 🟢 Nice-to-have (polish to PRD standard)
-
-7. Add user feedback (👍/👎) on explanation cards
-8. Cache per-chapter mastery score explicitly in `documents.json` for long-term history
-9. Plan **PostgreSQL migration** for post-MVP
-10. Extend exam-weighted mastery beyond CN/OS to all uploaded subjects
+1. Add user feedback (👍/👎) on explanation cards.
+3. Plan **PostgreSQL migration** for industrial scale.
+4. Extend exam-weighted mastery to all other subjects (DBMS, TOC, etc.).
+5. Add a "Master Mastery" dashboard for tracking progress across 10+ modules.

@@ -57,13 +57,12 @@ logger = logging.getLogger("alp")
 # For now we only support two subjects explicitly. Others are intentionally
 # commented out so they do NOT silently fall back.
 SUBJECT_WEIGHTS: dict[str, float] = {
-    # Core GATE CSE-style subjects (currently limited to CN + OS)
-    # Core GATE CSE-style subjects (currently limited to CN + OS)
-    # "Programming and Data Structures": 0.14,
-    # "Data Structures": 0.14,
-    # "Algorithms": 0.12,
+    # Core GATE CSE-style subjects (CN + OS + DS)
     "Computer Networks": 0.10,
     "Operating Systems": 0.10,
+    "Data Structures": 0.14,
+    # "Programming and Data Structures": 0.14,
+    # "Algorithms": 0.12,
     # "Database Management Systems": 0.10,
     # "DBMS": 0.10,
     # "Theory of Computation": 0.09,
@@ -383,14 +382,15 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
             })
         return (int(round(w_sum / wt_sum)) if wt_sum > 0 else 0), mastered_list
 
+    # 2. Calculate overall readiness and per-chapter mastery
+    readiness, mastered_chapters = calculate_readiness_from_list(final_quizzes)
+
+    # 2b. Risk chapters (PRD §9.2)
     risk_chapters = []
     if mastered_chapters:
-        # Sort by "Risk" (Inverse of mastery * weight)
-        # ONLY include topics that have been attempted (session_count > 0)
         attempted_chapters = [c for c in mastered_chapters if c.get("session_count", 0) > 0]
         attempted_chapters.sort(key=lambda c: ((100.0 - c["mastery"]) * c["exam_weight"]), reverse=True)
         for c in attempted_chapters[:3]:
-            # Return Inverse (Risk) as per PRD §9.2
             risk_chapters.append({"name": c["chapter_title"], "score": int(round(100.0 - c["mastery"]))})
 
     # 3. Trend & Action
@@ -399,17 +399,16 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
         if total_quizzes >= 3:
             indices = [max(0, total_quizzes // 3 - 1), max(0, 2 * total_quizzes // 3 - 1), total_quizzes - 1]
         else:
-            # If 1 or 2 quizzes, just show exactly 1 or 2 points
             indices = list(range(total_quizzes))
-            
         for idx in indices:
             val, _ = calculate_readiness_from_list(final_quizzes[:idx+1])
             trend.append(val)
-    else: 
-        trend = [0] # Single baseline point if empty
+    else:
+        trend = [0]
 
     next_action, next_action_type = "", "upload"
-    if not documents: next_action = "Upload notes to start."
+    if not documents:
+        next_action = "Upload notes to start."
     elif total_quizzes == 0:
         next_action = f"Take a diagnostic quiz across {len(documents)} modules."
         next_action_type = "diagnostic"
@@ -422,7 +421,8 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
 
     # 4. Gaps
     all_ws = []
-    for q in final_quizzes: all_ws.extend(q.get("weaknesses", []))
+    for q in final_quizzes:
+        all_ws.extend(q.get("weaknesses", []))
     from collections import Counter
     top_ws = [w[0] for w in Counter([w for w in all_ws if w != "General"]).most_common(3)]
 
@@ -434,30 +434,6 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
         "nextAction": next_action,
         "nextActionType": next_action_type,
         "subjects": list({d.get("subject", "") for d in documents if d.get("subject")}),
-        "hasContent": total_quizzes > 0,
-        "chaptersMastery": mastered_chapters,
-    }
-
-    # 7. Aggregate Top 3 Weaknesses (Gap Diagnosis)
-    all_weaknesses = []
-    for q in quizzes.values():
-        all_weaknesses.extend(q.get("weaknesses", []))
-    
-    from collections import Counter
-    top_weaknesses_raw = Counter([w for w in all_weaknesses if w != "General"]).most_common(3)
-    top_weaknesses = [w[0] for w in top_weaknesses_raw]
-
-    # Collect unique subjects from user docs for frontend
-    subjects = list({d.get("subject", "") for d in documents if d.get("subject")})
-
-    return {
-        "readiness": readiness,
-        "riskChapters": risk_chapters,
-        "trend": trend,
-        "topWeaknesses": top_weaknesses,
-        "nextAction": next_action,
-        "nextActionType": next_action_type,
-        "subjects": subjects,
         "hasContent": total_quizzes > 0,
         "chaptersMastery": mastered_chapters,
     }

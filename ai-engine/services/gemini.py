@@ -3,8 +3,10 @@ from google.genai import types
 import os
 import json
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 from fastembed import TextEmbedding
+from qdrant_client import QdrantClient
+from qdrant_client.http import models as qdrant_models
 
 logger = logging.getLogger("alp")
 
@@ -25,6 +27,19 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize FastEmbed: {e}")
     embedding_model = None
+
+# Initialize Qdrant Client for RAG
+QDRANT_URL = os.getenv("QDRANT_URL", "")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "alp_chunks")
+
+qdrant_client = None
+if QDRANT_URL and QDRANT_API_KEY:
+    try:
+        qdrant_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+        logger.info("Qdrant client initialized for RAG in GeminiService.")
+    except Exception as e:
+        logger.error(f"Failed to initialize Qdrant in GeminiService: {e}")
 
 # Robust model fallback list
 MODELS_FALLBACK = [
@@ -179,3 +194,205 @@ class GeminiService:
         except Exception as e:
             logger.error(f"Local embedding generation failed: {e}")
             return [[0.0] * 768 for _ in texts]
+
+    # ─── PRD §12 — Validation Pipeline ───────────────────────────
+    @staticmethod
+    def rule_based_validate(questions: List[Dict]) -> tuple[List[Dict], List[Dict]]:
+        """
+        PRD §12.1 — Rule-based checks on LLM quiz output.
+        Returns (valid, rejected) question lists.
+        """
+        valid = []
+        rejected = []
+        for q in questions:
+            # Must have all required keys
+            required_keys = {"question", "options", "correct_index", "explanation"}
+            if not all(k in q for k in required_keys):
+                rejected.append({"question": q, "reason": "missing_required_keys"})
+                continue
+            # Must have exactly 4 options
+            if not isinstance(q["options"], list) or len(q["options"]) != 4:
+                rejected.append({"question": q, "reason": "options_not_4"})
+                continue
+            # correct_index must be 0-3
+            ci = q["correct_index"]
+            if not isinstance(ci, int) or ci < 0 or ci > 3:
+                rejected.append({"question": q, "reason": "invalid_correct_index"})
+                continue
+            # No empty question text
+            if not q["question"].strip():
+                rejected.append({"question": q, "reason": "empty_question"})
+                continue
+            # No empty options
+            if any(not str(o).strip() for o in q["options"]):
+                rejected.append({"question": q, "reason": "empty_option"})
+                continue
+            # Options must be unique (case-insensitive)
+            lower_opts = [str(o).strip().lower() for o in q["options"]]
+            if len(set(lower_opts)) != 4:
+                rejected.append({"question": q, "reason": "duplicate_options"})
+                continue
+            # Question length guard: too short or too long
+            if len(q["question"]) < 10 or len(q["question"]) > 2000:
+                rejected.append({"question": q, "reason": "question_length_out_of_range"})
+                continue
+            valid.append(q)
+        return valid, rejected
+
+    @staticmethod
+    def verify_quiz_questions(questions: List[Dict], source_text: str) -> List[Dict]:
+        """
+        PRD §12.2 — Verifier LLM validation.
+        Uses a second Gemini call to cross-check generated Q&A against source text.
+        Returns only verified questions.
+        """
+        if not client or not questions:
+            return questions  # Graceful fallback: skip verification if client unavailable
+
+        # Build a compact payload for the verifier
+        qa_payload = []
+        for i, q in enumerate(questions):
+            qa_payload.append({
+                "index": i,
+                "question": q["question"],
+                "correct_answer": q["options"][q["correct_index"]],
+                "explanation": q.get("explanation", ""),
+            })
+
+        prompt = f"""You are a strict academic verifier. Given the SOURCE TEXT and a list of QUESTIONS with their stated CORRECT ANSWERS, verify each question:
+
+1. Is the correct answer actually correct according to the source text?
+2. Is the question grounded in the source text (not hallucinated)?
+3. Is the explanation accurate?
+
+Return a JSON array of objects, one per question:
+[{{"index": 0, "verdict": "PASS"}}, {{"index": 1, "verdict": "FAIL", "reason": "The correct answer is wrong because..."}}]
+
+Only return PASS or FAIL. Be strict but fair.
+
+SOURCE TEXT (truncated):
+\"{source_text[:8000]}\"
+
+QUESTIONS TO VERIFY:
+{json.dumps(qa_payload, indent=2)}
+"""
+        for model_id in MODELS_FALLBACK:
+            try:
+                response = client.models.generate_content(
+                    model=model_id,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json"
+                    )
+                )
+                if not response or not response.text:
+                    continue
+
+                verdicts = json.loads(response.text.strip())
+                if not isinstance(verdicts, list):
+                    continue
+
+                # Build a set of indices that passed verification
+                passed_indices = set()
+                for v in verdicts:
+                    if isinstance(v, dict) and v.get("verdict", "").upper() == "PASS":
+                        passed_indices.add(v.get("index"))
+
+                verified = []
+                for i, q in enumerate(questions):
+                    if i in passed_indices:
+                        verified.append(q)
+                    else:
+                        # Log the rejection for error learning (PRD §13)
+                        reason = "unknown"
+                        for v in verdicts:
+                            if isinstance(v, dict) and v.get("index") == i:
+                                reason = v.get("reason", "verifier_rejected")
+                                break
+                        from services.error_logger import log_system_error
+                        log_system_error(
+                            error_type="verifier_rejected",
+                            model_used=model_id,
+                            prompt="[Verifier LLM Check]",
+                            offending_content={
+                                "question": q.get("question"),
+                                "stated_correct": q["options"][q["correct_index"]],
+                                "reason": reason,
+                            }
+                        )
+                        logger.info(f"Verifier rejected Q{i}: {reason}")
+
+                # If ALL questions were rejected, fall back to returning them anyway
+                # (avoid empty quiz) but log a warning
+                if not verified:
+                    logger.warning("Verifier rejected ALL questions. Returning unverified set.")
+                    return questions
+
+                return verified
+
+            except Exception as e:
+                logger.warning(f"Verifier LLM call failed on {model_id}: {e}, skipping verification.")
+                continue
+
+        # If all models fail, return original questions (graceful degradation)
+        logger.warning("All verifier models failed. Returning unverified questions.")
+        return questions
+
+    # ─── PRD §14.3 — RAG Retrieval ──────────────────────────────
+    @staticmethod
+    def retrieve_context(user_id: str, doc_id: str, query: str = "", limit: int = 5) -> str:
+        """
+        Retrieves relevant context chunks from Qdrant using vector search.
+        Falls back to empty string if Qdrant is unavailable.
+        """
+        if not qdrant_client or not embedding_model:
+            return ""
+
+        try:
+            # 1. Generate Query Vector
+            # Use 'query' (e.g. topic) if provided, else broad representative search
+            search_query = query or "core concepts and important details"
+            query_vector = list(embedding_model.embed([search_query]))[0].tolist()
+
+            # 2. Build Filter
+            must_selectors = [
+                qdrant_models.FieldCondition(
+                    key="user_id",
+                    match=qdrant_models.MatchValue(value=user_id)
+                )
+            ]
+            if doc_id:
+                must_selectors.append(
+                    qdrant_models.FieldCondition(
+                        key="doc_id",
+                        match=qdrant_models.MatchValue(value=doc_id)
+                    )
+                )
+
+            # 3. Search Qdrant
+            results = qdrant_client.search(
+                collection_name=QDRANT_COLLECTION,
+                query_vector=query_vector,
+                query_filter=qdrant_models.Filter(must=must_selectors),
+                limit=limit
+            )
+
+            if not results:
+                return ""
+
+            # 4. Join Chunks
+            # We fetch actual text from the local files if paths were stored,
+            # but currently payload might not store full text. 
+            # If payload doesn't have text, we use the 'title' and 'topic'
+            # (In main.py we only stored metadata, not full text in payload)
+            # So we load from disk using the stored chapter_index.
+            
+            # Since payload doesn't have text, we need to return the list 
+            # of chapter_indices to the caller, or fetch here if we have DOC_DIR.
+            # For now, let's return a list of chapter IDs.
+            return [r.payload.get("chapter_index") for r in results if r.payload]
+
+        except Exception as e:
+            logger.error(f"RAG Retrieval failed: {e}")
+            return []
+

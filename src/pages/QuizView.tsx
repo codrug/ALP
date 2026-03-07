@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, AlertCircle, CheckCircle, XCircle, Loader2, Trophy, RefreshCw, X, AlertTriangle, ChevronRight, Eye, EyeOff } from 'lucide-react';
-import { API_BASE_URL } from '../api';
+import { ArrowRight, AlertCircle, CheckCircle, XCircle, Loader2, Trophy, RefreshCw, X, AlertTriangle, ChevronRight, Eye, EyeOff, Flag, BookOpen, RotateCcw } from 'lucide-react';
+import { API_BASE_URL, fetchRemediation, triggerReassessment, flagQuestion, RemediationDto } from '../api';
 
 interface QuizViewProps {
     docId: string | null;
@@ -40,6 +40,20 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
 
     // Review Mode
     const [showReview, setShowReview] = useState(false);
+
+    // ─── Remediation State (PRD §6.6) ─────────────────────────
+    const [showRemediation, setShowRemediation] = useState(false);
+    const [remediation, setRemediation] = useState<RemediationDto | null>(null);
+    const [remediationLoading, setRemediationLoading] = useState(false);
+    const [remediationError, setRemediationError] = useState<string | null>(null);
+
+    // ─── Reassessment State (PRD §6.7) ────────────────────────
+    const [reassessLoading, setReassessLoading] = useState(false);
+
+    // ─── Flag State (PRD §12.3) ───────────────────────────────
+    const [flaggingIndex, setFlaggingIndex] = useState<number | null>(null);
+    const [flagNote, setFlagNote] = useState('');
+    const [flagStatus, setFlagStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
 
     // 1. Generate Quiz
     const startQuiz = async () => {
@@ -82,6 +96,25 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
             setError(err.message || "Failed to start diagnostic loop. The AI engine might be busy.");
             setLoading(false);
         }
+    };
+
+    // Start quiz from a reassessment result (already has quiz_id + questions)
+    const startFromReassessment = (newQuizId: string, newQuestions: any[]) => {
+        setQuizId(newQuizId);
+        setQuestions(newQuestions);
+        setCurrentQ(0);
+        setSelected(null);
+        setFeedback(null);
+        setScore(0);
+        setWeightedScore(0);
+        setWeaknesses([]);
+        setAnswerHistory([]);
+        setIsFinished(false);
+        setShowReview(false);
+        setShowRemediation(false);
+        setRemediation(null);
+        setRemediationError(null);
+        setLoading(false);
     };
 
     useEffect(() => {
@@ -155,6 +188,55 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
         setView('dashboard');
     };
 
+    // ─── PRD §6.6 — Fetch Remediation ──────────────────────────
+    const handleFetchRemediation = async () => {
+        if (!quizId) return;
+        setRemediationLoading(true);
+        setRemediationError(null);
+        try {
+            const data = await fetchRemediation(quizId);
+            setRemediation(data);
+            setShowRemediation(true);
+        } catch (err: any) {
+            setRemediationError(err.message || 'Failed to load remediation.');
+        } finally {
+            setRemediationLoading(false);
+        }
+    };
+
+    // ─── PRD §6.7 — Trigger Reassessment ────────────────────────
+    const handleReassess = async () => {
+        if (!quizId) return;
+        setReassessLoading(true);
+        try {
+            const data = await triggerReassessment(quizId);
+            // Start a new quiz session with the reassessment data
+            startFromReassessment(data.quiz_id, data.questions);
+        } catch (err: any) {
+            setRemediationError(err.message || 'Failed to start reassessment.');
+        } finally {
+            setReassessLoading(false);
+        }
+    };
+
+    // ─── PRD §12.3 — Flag Question ──────────────────────────────
+    const handleFlag = async (errorType: string) => {
+        if (!quizId || flaggingIndex === null) return;
+        setFlagStatus('sending');
+        try {
+            await flagQuestion(quizId, flaggingIndex, errorType, flagNote);
+            setFlagStatus('sent');
+            setTimeout(() => {
+                setFlaggingIndex(null);
+                setFlagNote('');
+                setFlagStatus('idle');
+            }, 2000);
+        } catch (err: any) {
+            console.error('Flag failed:', err);
+            setFlagStatus('idle');
+        }
+    };
+
     // --- LOADING SCREEN (full-screen) ---
     if (loading) return (
         <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
@@ -194,10 +276,108 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
         </div>
     );
 
-    // --- RESULT SCREEN with Review (full-screen) ---
+    // --- RESULT SCREEN with Review / Remediation / Reassessment ---
     if (isFinished) {
         const percentage = Math.round((score / questions.length) * 100);
         const isPassed = percentage >= 80;
+
+        // ─── REMEDIATION SCREEN ─────────────────────────────────
+        if (showRemediation && remediation) {
+            return (
+                <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
+                    <div className="max-w-3xl w-full animate-in fade-in">
+                        <div className="flex items-center justify-between mb-8">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center border border-blue-500/20">
+                                    <BookOpen className="w-5 h-5 text-blue-500" />
+                                </div>
+                                <h2 className="text-3xl font-black text-white tracking-tighter">Targeted Remediation</h2>
+                            </div>
+                            <button
+                                onClick={() => setShowRemediation(false)}
+                                className="flex items-center gap-2 text-gray-500 hover:text-white transition-colors text-xs font-black uppercase tracking-widest"
+                            >
+                                <X className="w-4 h-4" /> Back to Score
+                            </button>
+                        </div>
+
+                        {/* Gap Summary */}
+                        <div className="grid grid-cols-2 gap-4 mb-8">
+                            <div className="bg-blue-500/5 border border-blue-500/10 rounded-2xl p-6">
+                                <div className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-1">Foundation Gaps</div>
+                                <div className="text-3xl font-black text-white">{remediation.weaknesses_summary?.foundation || 0}</div>
+                            </div>
+                            <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-6">
+                                <div className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Application Gaps</div>
+                                <div className="text-3xl font-black text-white">{remediation.weaknesses_summary?.application || 0}</div>
+                            </div>
+                        </div>
+
+                        {/* Dominant Gap Badge */}
+                        <div className="mb-6">
+                            <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest border ${remediation.gap_type === 'Application'
+                                    ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                                    : remediation.gap_type === 'none'
+                                        ? 'bg-green-500/10 text-green-500 border-green-500/20'
+                                        : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                                }`}>
+                                {remediation.gap_type === 'none' ? '✓ No Gaps' : `Primary Gap: ${remediation.gap_type}`}
+                            </span>
+                        </div>
+
+                        {/* Remediation Content */}
+                        <div className="bg-[#111] border border-white/10 rounded-2xl p-8 mb-8">
+                            <h3 className="text-sm font-black text-amber-500 uppercase tracking-widest mb-4">AI-Generated Study Guide</h3>
+                            <div className="prose prose-invert max-w-none">
+                                <div className="text-gray-300 leading-relaxed whitespace-pre-wrap text-sm">{remediation.remediation}</div>
+                            </div>
+                        </div>
+
+                        {/* Weak Concepts */}
+                        {remediation.weak_concepts.length > 0 && (
+                            <div className="mb-8">
+                                <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-3">Focus Areas</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {remediation.weak_concepts.map((c, i) => (
+                                        <span key={i} className="px-3 py-1.5 bg-red-500/5 border border-red-500/10 text-red-400 text-xs rounded-lg font-medium truncate max-w-xs">
+                                            {c}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Action Buttons */}
+                        <div className="flex flex-col md:flex-row gap-4 justify-center">
+                            <button
+                                onClick={handleReassess}
+                                disabled={reassessLoading}
+                                className="px-10 py-5 rounded-2xl font-black text-xl transition-all shadow-xl flex items-center justify-center gap-3 bg-amber-500 text-black hover:bg-amber-400 shadow-amber-500/20 disabled:opacity-50"
+                            >
+                                {reassessLoading ? (
+                                    <><Loader2 className="w-5 h-5 animate-spin" /> Generating...</>
+                                ) : (
+                                    <><RotateCcw className="w-5 h-5" /> Reassess Weak Areas</>
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setView('dashboard')}
+                                className="px-8 py-5 rounded-2xl font-black transition-all flex items-center justify-center gap-2 border border-white/10 bg-white/5 text-white hover:bg-white/10"
+                            >
+                                Return to Dashboard
+                                <ChevronRight className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {remediationError && (
+                            <div className="mt-4 bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-xl text-center">
+                                {remediationError}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
 
         return (
             <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
@@ -265,6 +445,22 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                                     <Eye className="w-5 h-5" />
                                     Review Detailed Gaps
                                 </button>
+
+                                {/* Remediation Button (PRD §6.6) */}
+                                {weaknesses.length > 0 && (
+                                    <button
+                                        onClick={handleFetchRemediation}
+                                        disabled={remediationLoading}
+                                        className="px-8 py-5 rounded-2xl font-black transition-all flex items-center justify-center gap-2 border border-blue-500/20 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 disabled:opacity-50"
+                                    >
+                                        {remediationLoading ? (
+                                            <><Loader2 className="w-5 h-5 animate-spin" /> Loading...</>
+                                        ) : (
+                                            <><BookOpen className="w-5 h-5" /> Get Remediation</>
+                                        )}
+                                    </button>
+                                )}
+
                                 <button
                                     onClick={() => setView('dashboard')}
                                     className={`px-10 py-5 rounded-2xl font-black text-xl transition-all shadow-xl flex items-center justify-center gap-2 ${isPassed ? 'bg-green-500 text-black hover:bg-green-400 shadow-green-500/20' : 'bg-amber-500 text-black hover:bg-amber-400 shadow-amber-500/20'}`}
@@ -273,6 +469,12 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                                     <ChevronRight className="w-5 h-5" />
                                 </button>
                             </div>
+
+                            {remediationError && (
+                                <div className="mt-4 bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-xl">
+                                    {remediationError}
+                                </div>
+                            )}
                         </div>
                     ) : (
                         /* Review Mode */
@@ -297,7 +499,7 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                                                     : <XCircle className="w-5 h-5 text-red-500" />
                                                 }
                                             </div>
-                                            <div>
+                                            <div className="flex-grow">
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Question {idx + 1}</span>
                                                     {item.gap_type && (
@@ -308,6 +510,14 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                                                 </div>
                                                 <h3 className="text-lg font-bold text-white">{item.questionText}</h3>
                                             </div>
+                                            {/* Flag Button (PRD §12.3) */}
+                                            <button
+                                                onClick={() => setFlaggingIndex(idx)}
+                                                className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center bg-white/5 border border-white/10 hover:bg-red-500/10 hover:border-red-500/20 transition-all group"
+                                                title="Report this question"
+                                            >
+                                                <Flag className="w-3.5 h-3.5 text-gray-600 group-hover:text-red-500 transition-colors" />
+                                            </button>
                                         </div>
 
                                         <div className="space-y-2 mb-6">
@@ -337,7 +547,21 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                                 ))}
                             </div>
 
-                            <div className="mt-8 text-center">
+                            <div className="mt-8 flex flex-col md:flex-row gap-4 justify-center">
+                                {/* Remediation Button in Review (PRD §6.6) */}
+                                {weaknesses.length > 0 && (
+                                    <button
+                                        onClick={handleFetchRemediation}
+                                        disabled={remediationLoading}
+                                        className="px-8 py-5 rounded-2xl font-black transition-all flex items-center justify-center gap-2 border border-blue-500/20 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 disabled:opacity-50"
+                                    >
+                                        {remediationLoading ? (
+                                            <><Loader2 className="w-5 h-5 animate-spin" /> Loading...</>
+                                        ) : (
+                                            <><BookOpen className="w-5 h-5" /> Get Remediation</>
+                                        )}
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => setView('dashboard')}
                                     className="bg-amber-500 hover:bg-amber-600 text-black px-12 py-5 rounded-2xl font-black text-xl transition-all shadow-xl shadow-amber-500/20"
@@ -427,11 +651,21 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                                     <div className="flex items-center gap-2 text-amber-500 text-xs font-black uppercase tracking-widest">
                                         <AlertCircle className="w-4 h-4" /> Mastery Insight
                                     </div>
-                                    {feedback.gap_type && (
-                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase ${feedback.gap_type.toLowerCase() === 'application' ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30' : 'bg-blue-500/20 text-blue-500 border border-blue-500/30'}`}>
-                                            {feedback.gap_type}
-                                        </span>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                        {feedback.gap_type && (
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase ${feedback.gap_type.toLowerCase() === 'application' ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30' : 'bg-blue-500/20 text-blue-500 border border-blue-500/30'}`}>
+                                                {feedback.gap_type}
+                                            </span>
+                                        )}
+                                        {/* Flag Button (PRD §12.3) — inline on feedback card */}
+                                        <button
+                                            onClick={() => setFlaggingIndex(currentQ)}
+                                            className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-white/5 border border-white/10 hover:bg-red-500/10 hover:border-red-500/20 text-gray-600 hover:text-red-500 transition-all"
+                                            title="Report this question"
+                                        >
+                                            <Flag className="w-3 h-3" /> Report
+                                        </button>
+                                    </div>
                                 </div>
                                 <p className="text-gray-400 text-sm leading-relaxed">
                                     {feedback.explanation}
@@ -488,6 +722,72 @@ export const QuizView: React.FC<QuizViewProps> = ({ docId, setView }) => {
                                 Continue Assessment
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Flag Question Modal (PRD §12.3) */}
+            {flaggingIndex !== null && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center px-6">
+                    <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={() => { setFlaggingIndex(null); setFlagNote(''); setFlagStatus('idle'); }} />
+                    <div className="relative w-full max-w-md bg-[#111] border border-white/10 rounded-[2rem] p-10 animate-in slide-in-from-bottom-4 shadow-2xl">
+                        {flagStatus === 'sent' ? (
+                            <div className="text-center">
+                                <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-green-500/20">
+                                    <CheckCircle className="w-8 h-8 text-green-500" />
+                                </div>
+                                <h3 className="text-2xl font-black text-white mb-3">Report Logged</h3>
+                                <p className="text-gray-500 font-light">Thank you. This question has been flagged for review.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center border border-red-500/20">
+                                        <Flag className="w-5 h-5 text-red-500" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-white">Report Question</h3>
+                                        <p className="text-gray-600 text-xs">Help us improve quiz quality</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 mb-6">
+                                    {[
+                                        { type: 'hallucination', label: 'Hallucinated / Not in source', color: 'red' },
+                                        { type: 'factual_error', label: 'Correct answer is wrong', color: 'amber' },
+                                        { type: 'off-topic', label: 'Off-topic or irrelevant', color: 'blue' },
+                                    ].map(({ type, label, color }) => (
+                                        <button
+                                            key={type}
+                                            onClick={() => handleFlag(type)}
+                                            disabled={flagStatus === 'sending'}
+                                            className={`w-full p-4 rounded-xl border transition-all text-left flex items-center justify-between group bg-${color}-500/5 border-${color}-500/10 hover:border-${color}-500/30 text-gray-300 hover:text-white disabled:opacity-50`}
+                                        >
+                                            <span className="text-sm font-bold">{label}</span>
+                                            {flagStatus === 'sending' ? (
+                                                <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+                                            ) : (
+                                                <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-white transition-colors" />
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <textarea
+                                    value={flagNote}
+                                    onChange={(e) => setFlagNote(e.target.value)}
+                                    placeholder="Optional: Add details about the issue..."
+                                    className="w-full bg-black/60 border border-white/10 rounded-xl p-4 text-sm text-white placeholder:text-gray-700 focus:border-amber-500 outline-none transition-all resize-none h-20 mb-4"
+                                />
+
+                                <button
+                                    onClick={() => { setFlaggingIndex(null); setFlagNote(''); setFlagStatus('idle'); }}
+                                    className="w-full text-gray-600 hover:text-white text-xs font-black uppercase tracking-widest py-3 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

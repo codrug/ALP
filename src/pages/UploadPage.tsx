@@ -32,7 +32,7 @@ const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
     const [topic, setTopic] = useState('');
     const [isDragging, setIsDragging] = useState(false);
 
-    const subjects = ['Computer Networks', 'Operating Systems'];
+    const subjects = ['Computer Networks', 'Operating Systems', 'Data Structures'];
 
     // Simulation Logic
     const startProcess = async (file: File) => {

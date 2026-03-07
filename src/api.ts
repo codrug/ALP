@@ -237,3 +237,85 @@ export async function fetchDashboardSummary(): Promise<DashboardSummaryDto> {
         throw err;
     }
 }
+
+// ─── PRD §6.6 — Remediation ──────────────────────────────────
+
+export interface RemediationDto {
+    remediation: string;
+    weak_concepts: string[];
+    gap_type: string;
+    quiz_score?: number;
+    quiz_total?: number;
+    weaknesses_summary?: {
+        foundation: number;
+        application: number;
+    };
+}
+
+export async function fetchRemediation(quizId: string): Promise<RemediationDto> {
+    try {
+        const response = await fetch(`${API_BASE_URL}/quiz/${quizId}/remediation`);
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.detail || 'Failed to load remediation.');
+        }
+        return response.json();
+    } catch (err: any) {
+        if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+            throw new Error(`Connection to AI Engine (${API_BASE_URL}) failed. Is the AI service running?`);
+        }
+        throw err;
+    }
+}
+
+// ─── PRD §6.7 — Reassessment ────────────────────────────────
+
+export interface ReassessmentDto {
+    quiz_id: string;
+    questions: any[];
+    reassessment_of: string;
+}
+
+export async function triggerReassessment(quizId: string): Promise<ReassessmentDto> {
+    try {
+        const response = await fetch(`${API_BASE_URL}/quiz/${quizId}/reassess`, {
+            method: 'POST',
+        });
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.detail || 'Failed to trigger reassessment.');
+        }
+        return response.json();
+    } catch (err: any) {
+        if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+            throw new Error(`Connection to AI Engine (${API_BASE_URL}) failed. Is the AI service running?`);
+        }
+        throw err;
+    }
+}
+
+// ─── PRD §12.3 — Flag Question ──────────────────────────────
+
+export async function flagQuestion(
+    quizId: string,
+    questionIndex: number,
+    errorType: string,
+    note?: string
+): Promise<{ status: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/quiz/${quizId}/flag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            question_index: questionIndex,
+            error_type: errorType,
+            note: note || null,
+        }),
+    });
+
+    if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || 'Failed to flag question.');
+    }
+
+    return response.json();
+}
