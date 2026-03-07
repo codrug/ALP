@@ -30,6 +30,9 @@ task.txt
 # AI engine runtime data
 ai-engine/data/
 ai-engine/venv/
+ai-engine/__pycache__/
+ai-engine/services/__pycache__/
+ai-engine/routers/__pycache__/
 
 __pycache__/
 *.py[cod]
