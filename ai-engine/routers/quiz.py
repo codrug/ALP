@@ -53,7 +53,7 @@ def save_documents_index(documents: list[dict]):
 
 def _update_chapter_mastery(doc_id: str, chapter_id: str | None, mastery_pct: float):
     """
-    PRD §8.2 — Persist per-chapter mastery score into documents.json.
+    Persist per-chapter mastery score into documents.json.
     Updates the mastery_score and mastery_updated_at fields for the relevant chapter.
     """
     documents = load_documents_index()
@@ -241,7 +241,10 @@ def submit_answer(quiz_id: str, question_index: int, selected_option: int):
         quiz["score"] = quiz.get("score", 0) + 1
     else:
         # Log a high-level weakness label for later aggregation
-        quiz["weaknesses"].append(question.get("gap_type", "General"))
+        gap = question.get("gap_type", "General")
+        concept = question.get("concept", "")
+        detail = f"{gap}: {concept}" if concept else gap
+        quiz["weaknesses"].append(detail)
 
     # Check if this is the last question — if so, compute and persist mastery
     total_answered = quiz.get("_answered_count", 0) + 1
@@ -305,8 +308,8 @@ def get_remediation(quiz_id: str):
         }
 
     # Determine dominant gap type
-    foundation_count = sum(1 for w in weaknesses if str(w).lower() == "foundation")
-    application_count = sum(1 for w in weaknesses if str(w).lower() == "application")
+    foundation_count = sum(1 for w in weaknesses if str(w).lower().startswith("foundation"))
+    application_count = sum(1 for w in weaknesses if str(w).lower().startswith("application"))
     dominant_gap = "Application" if application_count >= foundation_count else "Foundation"
 
     # Extract weak concepts from incorrect answers

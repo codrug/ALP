@@ -27,14 +27,23 @@ dist-ssr
 
 task.txt
 
-# AI engine runtime data
+# AI engine runtime data-
 ai-engine/data/
 ai-engine/venv/
+ai-engine/ai_engine.log
 ai-engine/__pycache__/
 ai-engine/services/__pycache__/
 ai-engine/routers/__pycache__/
 
+# Python cache & compiled files
 __pycache__/
 *.py[cod]
 *$py.class
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+data/

@@ -21,7 +21,7 @@ def log_system_error(
     metadata: Optional[Dict[str, Any]] = None
 ):
     """
-    Implements PRD §13.2: Categorize error types 
+    Categorize error types 
     (hallucination, off-topic, factual_error, model_used, prompt_hash).
     """
     if not DATA_DIR.exists():
@@ -34,7 +34,7 @@ def log_system_error(
         "model_used": model_used,
         "prompt_hash": get_prompt_hash(prompt),
         "content_snapshot": offending_content,
-        "used_for_optimization": False, # PRD §13.3: Never use errors as content
+        "used_for_optimization": False, # Never use errors as content
         "metadata": metadata or {}
     }
 

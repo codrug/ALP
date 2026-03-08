@@ -75,7 +75,8 @@ class GeminiService:
                 "options": ["Option A", "Option B", "Option C", "Option D"],
                 "correct_index": 0,
                 "explanation": "concise explanation here...",
-                "gap_type": "Foundation"
+                "gap_type": "Foundation",
+                "concept": "Specific concept name (e.g. Memory Allocation, TCP Handshake)"
             }}
         ]
 
@@ -206,7 +207,7 @@ class GeminiService:
         rejected = []
         for q in questions:
             # Must have all required keys
-            required_keys = {"question", "options", "correct_index", "explanation"}
+            required_keys = {"question", "options", "correct_index", "explanation", "concept"}
             if not all(k in q for k in required_keys):
                 rejected.append({"question": q, "reason": "missing_required_keys"})
                 continue
@@ -242,7 +243,7 @@ class GeminiService:
     @staticmethod
     def verify_quiz_questions(questions: List[Dict], source_text: str) -> List[Dict]:
         """
-        PRD §12.2 — Verifier LLM validation.
+        Verifier LLM validation.
         Uses a second Gemini call to cross-check generated Q&A against source text.
         Returns only verified questions.
         """
