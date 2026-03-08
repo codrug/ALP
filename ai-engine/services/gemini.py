@@ -43,12 +43,18 @@ if QDRANT_URL and QDRANT_API_KEY:
 
 # Robust model fallback list
 MODELS_FALLBACK = [
-    "gemini-flash-latest",
-    "gemini-1.5-flash",
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-pro",
+    "gemini-2.0-pro-exp-02-05", # Experimental Pro
+    "gemini-exp-1206",           # General experimental
     "gemini-pro-latest"
 ]
+
+import time
+import random
 
 class GeminiService:
     @staticmethod
@@ -86,57 +92,72 @@ class GeminiService:
 
         last_exception = None
         for model_id in MODELS_FALLBACK:
-            try:
-                logger.info(f"Attempting quiz generation with {model_id}...")
-                response = client.models.generate_content(
-                    model=model_id,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json"
-                    )
-                )
-
-                if not response or not response.text:
-                    continue
-                    
-                clean_text = response.text.strip()
-                
+            for attempt in range(2): # Retry each model once with a delay
                 try:
-                    return json.loads(clean_text)
-                except json.JSONDecodeError as je:
-                    if "```json" in clean_text:
-                        extracted = clean_text.split("```json")[-1].split("```")[0].strip()
-                        return json.loads(extracted)
+                    logger.info(f"Attempting quiz generation with {model_id} (Attempt {attempt+1})...")
+                    response = client.models.generate_content(
+                        model=model_id,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json"
+                        )
+                    )
+
+                    if not response or not response.text:
+                        continue
+                        
+                    clean_text = response.text.strip()
                     
-                    # Log Parse Failure as per PRD §13.2
+                    try:
+                        return json.loads(clean_text)
+                    except json.JSONDecodeError as je:
+                        if "```json" in clean_text:
+                            extracted = clean_text.split("```json")[-1].split("```")[0].strip()
+                            return json.loads(extracted)
+                        
+                        # Log Parse Failure as per PRD §13.2
+                        from services.error_logger import log_system_error
+                        log_system_error(
+                            error_type="parse_failure",
+                            model_used=model_id,
+                            prompt=prompt,
+                            offending_content=clean_text
+                        )
+                        raise je
+
+                except Exception as e:
+                    last_exception = e
+                    error_msg = str(e).upper()
+                    
+                    # Log General Generation Exception
                     from services.error_logger import log_system_error
                     log_system_error(
-                        error_type="parse_failure",
+                        error_type="generation_exception",
                         model_used=model_id,
                         prompt=prompt,
-                        offending_content=clean_text
+                        offending_content=str(e)
                     )
-                    raise je
 
-            except Exception as e:
-                last_exception = e
-                error_msg = str(e).upper()
-                
-                # Log General Generation Exception
-                from services.error_logger import log_system_error
-                log_system_error(
-                    error_type="generation_exception",
-                    model_used=model_id,
-                    prompt=prompt,
-                    offending_content=str(e)
-                )
-
-                if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg or "NOT_FOUND" in error_msg or "404" in error_msg:
-                    logger.warning(f"Model {model_id} failed with {e}. Trying fallback...")
-                    continue
-                else:
-                    logger.error(f"Gemini Quiz Generation Failed on {model_id}: {e}")
-                    continue
+                    if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
+                        if "PERDAY" in error_msg:
+                            logger.error(f"Daily quota exhausted for {model_id}. Trying next category...")
+                            break # Try next model immediately
+                        
+                        if attempt == 0:
+                            wait_time = 5 + random.uniform(1, 3)
+                            logger.warning(f"Rate limited (RPM) on {model_id}. Waiting {wait_time:.1f}s before retry...")
+                            time.sleep(wait_time)
+                            continue # Same model, retry
+                        else:
+                            logger.warning(f"Model {model_id} still rate limited after retry. Trying fallback...")
+                            break # Try next model
+                    
+                    if "NOT_FOUND" in error_msg or "404" in error_msg:
+                        logger.warning(f"Model {model_id} not available. Trying fallback...")
+                        break
+                    
+                    logger.error(f"Gemini Quiz Generation Exception on {model_id}: {e}")
+                    break # Non-quota error, move to next model
 
         logger.error(f"All Gemini models failed. Last error: {last_exception}")
         return []
@@ -169,10 +190,11 @@ class GeminiService:
             except Exception as e:
                 last_exception = e
                 error_msg = str(e).upper()
-                if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg or "NOT_FOUND" in error_msg or "404" in error_msg:
+                if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
+                    if "PERDAY" in error_msg: break
+                    time.sleep(3)
                     continue
-                else:
-                    break
+                break # Non-quota error
         
         logger.error(f"All Gemini remediation models failed. Last error: {last_exception}")
         return "Unable to generate remediation at this time."
@@ -278,62 +300,67 @@ QUESTIONS TO VERIFY:
 {json.dumps(qa_payload, indent=2)}
 """
         for model_id in MODELS_FALLBACK:
-            try:
-                response = client.models.generate_content(
-                    model=model_id,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json"
-                    )
-                )
-                if not response or not response.text:
-                    continue
-
-                verdicts = json.loads(response.text.strip())
-                if not isinstance(verdicts, list):
-                    continue
-
-                # Build a set of indices that passed verification
-                passed_indices = set()
-                for v in verdicts:
-                    if isinstance(v, dict) and v.get("verdict", "").upper() == "PASS":
-                        passed_indices.add(v.get("index"))
-
-                verified = []
-                for i, q in enumerate(questions):
-                    if i in passed_indices:
-                        verified.append(q)
-                    else:
-                        # Log the rejection for error learning (PRD §13)
-                        reason = "unknown"
-                        for v in verdicts:
-                            if isinstance(v, dict) and v.get("index") == i:
-                                reason = v.get("reason", "verifier_rejected")
-                                break
-                        from services.error_logger import log_system_error
-                        log_system_error(
-                            error_type="verifier_rejected",
-                            model_used=model_id,
-                            prompt="[Verifier LLM Check]",
-                            offending_content={
-                                "question": q.get("question"),
-                                "stated_correct": q["options"][q["correct_index"]],
-                                "reason": reason,
-                            }
+            for attempt in range(2):
+                try:
+                    response = client.models.generate_content(
+                        model=model_id,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json"
                         )
-                        logger.info(f"Verifier rejected Q{i}: {reason}")
+                    )
+                    if not response or not response.text:
+                        continue
 
-                # If ALL questions were rejected, fall back to returning them anyway
-                # (avoid empty quiz) but log a warning
-                if not verified:
-                    logger.warning("Verifier rejected ALL questions. Returning unverified set.")
-                    return questions
+                    verdicts = json.loads(response.text.strip())
+                    if not isinstance(verdicts, list):
+                        continue
 
-                return verified
+                    # Build a set of indices that passed verification
+                    passed_indices = set()
+                    for v in verdicts:
+                        if isinstance(v, dict) and v.get("verdict", "").upper() == "PASS":
+                            passed_indices.add(v.get("index"))
 
-            except Exception as e:
-                logger.warning(f"Verifier LLM call failed on {model_id}: {e}, skipping verification.")
-                continue
+                    verified = []
+                    for i, q in enumerate(questions):
+                        if i in passed_indices:
+                            verified.append(q)
+                        else:
+                            # Log the rejection for error learning (PRD §13)
+                            reason = "unknown"
+                            for v in verdicts:
+                                if isinstance(v, dict) and v.get("index") == i:
+                                    reason = v.get("reason", "verifier_rejected")
+                                    break
+                            from services.error_logger import log_system_error
+                            log_system_error(
+                                error_type="verifier_rejected",
+                                model_used=model_id,
+                                prompt="[Verifier LLM Check]",
+                                offending_content={
+                                    "question": q.get("question"),
+                                    "stated_correct": q["options"][q["correct_index"]],
+                                    "reason": reason,
+                                }
+                            )
+                            logger.info(f"Verifier rejected Q{i}: {reason}")
+
+                    # If ALL questions were rejected, fall back to returning them anyway
+                    # (avoid empty quiz) but log a warning
+                    if not verified:
+                        logger.warning("Verifier rejected ALL questions. Returning unverified set.")
+                        return questions
+
+                    return verified
+
+                except Exception as e:
+                    error_msg = str(e).upper()
+                    if ("RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg) and attempt == 0:
+                        time.sleep(2)
+                        continue
+                    logger.warning(f"Verifier LLM call failed on {model_id}: {e}, skipping verification.")
+                    break # Try next model
 
         # If all models fail, return original questions (graceful degradation)
         logger.warning("All verifier models failed. Returning unverified questions.")
