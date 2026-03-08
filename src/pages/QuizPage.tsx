@@ -82,11 +82,8 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
 
     const handleInitialize = () => {
         if (selectedMode === 'diagnostic') {
-            // Use first active document for diagnostic
-            const activeDoc = documents.find((d) => d.status === 'Active');
-            if (activeDoc) {
-                onStartQuiz(activeDoc.id, 'diagnostic');
-            }
+            // Signal diagnostic mode to the quiz runner
+            onStartQuiz('diagnostic', 'diagnostic');
         } else if (selectedMode === 'subject' && selectedSubjects.length > 0) {
             // Find doc matching first selected subject
             const subjectName = subjects.find((s) => s.id === selectedSubjects[0])?.name;

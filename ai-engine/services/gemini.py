@@ -381,17 +381,14 @@ QUESTIONS TO VERIFY:
             if not results:
                 return ""
 
-            # 4. Join Chunks
-            # We fetch actual text from the local files if paths were stored,
-            # but currently payload might not store full text. 
-            # If payload doesn't have text, we use the 'title' and 'topic'
-            # (In main.py we only stored metadata, not full text in payload)
-            # So we load from disk using the stored chapter_index.
-            
-            # Since payload doesn't have text, we need to return the list 
-            # of chapter_indices to the caller, or fetch here if we have DOC_DIR.
-            # For now, let's return a list of chapter IDs.
-            return [r.payload.get("chapter_index") for r in results if r.payload]
+            # 4. Return pairs of (doc_id, chapter_index) to allow multi-doc retrieval
+            return [
+                {
+                    "doc_id": r.payload.get("doc_id"),
+                    "chapter_index": r.payload.get("chapter_index")
+                }
+                for r in results if r.payload and "doc_id" in r.payload
+            ]
 
         except Exception as e:
             logger.error(f"RAG Retrieval failed: {e}")

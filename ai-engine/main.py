@@ -298,7 +298,11 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
             try:
                 all_data = json.load(f)
                 user_doc_ids = {d.get("id") for d in documents}
-                raw_quizzes = {qid: q for qid, q in all_data.items() if q.get("doc_id") in user_doc_ids}
+                # [NEW] Include diagnostic quizzes as well as document-specific ones
+                raw_quizzes = {
+                    qid: q for qid, q in all_data.items() 
+                    if q.get("doc_id") in user_doc_ids or q.get("doc_id") == "diagnostic"
+                }
             except json.JSONDecodeError:
                 raw_quizzes = {}
 
@@ -340,6 +344,14 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
         # Overlay actual quiz data
         for q in quiz_list:
             d_id = q.get("doc_id")
+            
+            # Diagnostic quizzes are treated as global assessments
+            if d_id == "diagnostic":
+                # Special logic: Diagnostic quizzes directly reflect overall readiness
+                # but we can't easily attribute them to specific chapters.
+                # For now, we skip them for per-chapter stats but will use them for trend.
+                continue
+
             if d_id not in docs_by_id: continue
             s = docs_by_id[d_id].get("subject", "General") or "General"
             weight = SUBJECT_WEIGHTS.get(s, 1.0)
@@ -396,13 +408,29 @@ def compute_dashboard_summary(user_id: str, documents: list[dict]) -> dict:
     # 3. Trend & Action
     trend = []
     if total_quizzes > 0:
+        # Trend should ideally show the evolution of 'readiness'
         if total_quizzes >= 3:
             indices = [max(0, total_quizzes // 3 - 1), max(0, 2 * total_quizzes // 3 - 1), total_quizzes - 1]
         else:
             indices = list(range(total_quizzes))
+        
         for idx in indices:
-            val, _ = calculate_readiness_from_list(final_quizzes[:idx+1])
-            trend.append(val)
+            subset = final_quizzes[:idx+1]
+            # If the last quiz in the subset is a diagnostic one, its score is highly representative
+            last_q = subset[-1]
+            if last_q.get("doc_id") == "diagnostic":
+                # Use diagnostic mastery directly for trend point
+                tq = last_q.get("total_questions", 1)
+                ws = last_q.get("weaknesses", []) or []
+                fw = sum(1 for w in ws if str(w).lower() == "foundation")
+                aw = sum(1 for w in ws if str(w).lower() == "application")
+                ow = len(ws) - fw - aw
+                ew = float(fw) + float(ow) + 1.5 * float(aw)
+                p = max(0.0, min(100.0, ((max(0.0, float(tq) - ew)) / float(tq)) * 100.0))
+                trend.append(int(round(p)))
+            else:
+                val, _ = calculate_readiness_from_list(subset)
+                trend.append(val)
     else:
         trend = [0]
 

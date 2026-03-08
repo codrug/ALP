@@ -114,12 +114,17 @@ def generate_quiz(doc_id: str, chapter_id: str = None):
     else:
         # Full-document quiz — attempt RAG (PRD §14.3)
         # Search for top 5 most 'central' or 'relevant' chapters
-        top_indices = GeminiService.retrieve_context(user_id, doc_id, query=topic, limit=5)
+        top_chunks = GeminiService.retrieve_context(user_id, doc_id, query=topic, limit=5)
         
-        if top_indices and isinstance(top_indices, list):
+        if top_chunks and isinstance(top_chunks, list):
             found_texts = []
-            for idx in top_indices:
-                cp = doc_path / f"chunk_{idx}.txt"
+            for chunk in top_chunks:
+                d_id = chunk.get("doc_id")
+                idx = chunk.get("chapter_index")
+                # Ensure we only fetch from the requested doc_id for standard quizzes
+                if d_id != doc_id: continue
+
+                cp = DOC_DIR / d_id / f"chunk_{idx}.txt"
                 if cp.exists():
                     found_texts.append(cp.read_text(encoding="utf-8"))
             if found_texts:
@@ -204,6 +209,86 @@ def generate_quiz(doc_id: str, chapter_id: str = None):
     save_quizzes(db)
 
     # Return questions WITHOUT correct answer/explanation to frontend
+    client_questions = [
+        {
+            "id": idx,
+            "question": q["question"],
+            "options": q["options"],
+            "gap_type": q.get("gap_type", "Foundation")
+        } for idx, q in enumerate(verified_questions)
+    ]
+
+    return {"quiz_id": quiz_id, "questions": client_questions}
+
+
+# ─── Diagnostic Quiz (PRD §9.1) ──────────────────────────────────
+
+@router.post("/generate_diagnostic")
+def generate_diagnostic(user_id: str):
+    """
+    PRD §9.1 — Full-spectrum assessment across all user curricula.
+    Uses RAG to sample from all active documents for that user.
+    """
+    # 1. Fetch multi-doc context via RAG
+    # Sample up to 10 chapters from across the user's library
+    top_chunks = GeminiService.retrieve_context(user_id, doc_id=None, query="core concepts and fundamentals", limit=10)
+    
+    if not top_chunks:
+        # Fallback: Just pick a document if RAG fails
+        docs = load_documents_index()
+        user_docs = [d for d in docs if d.get("user_id") == user_id and d.get("status") == "Active"]
+        if not user_docs:
+            raise HTTPException(status_code=400, detail="No active material found for diagnostic.")
+        doc_id = user_docs[0]["id"]
+        return generate_quiz(doc_id)
+
+    # 2. Extract and compose context
+    found_texts = []
+    for chunk in top_chunks:
+        d_id = chunk.get("doc_id")
+        idx = chunk.get("chapter_index")
+        cp = DOC_DIR / d_id / f"chunk_{idx}.txt"
+        if cp.exists():
+            found_texts.append(cp.read_text(encoding="utf-8"))
+    
+    if not found_texts:
+        raise HTTPException(status_code=500, detail="Unable to retrieve diagnostic context.")
+    
+    context_text = "\n\n---\n\n".join(found_texts)
+
+    # 3. Generate larger 10-question quiz (for true diagnostic coverage)
+    questions = GeminiService.generate_quiz(context_text, num_questions=10)
+    
+    if not questions:
+        raise HTTPException(status_code=500, detail="AI failed to generate diagnostic questions")
+
+    # 4. Pipeline: Validate & Verify
+    valid_questions, rejected_rules = GeminiService.rule_based_validate(questions)
+    verified_questions = GeminiService.verify_quiz_questions(valid_questions, context_text)
+
+    if not verified_questions:
+        raise HTTPException(status_code=500, detail="Diagnostic failed verification")
+
+    # 5. Persist Diagnostic Session
+    quiz_id = str(uuid.uuid4())
+    quiz_data = {
+        "id": quiz_id,
+        "doc_id": "diagnostic",  # Special marker for analytic system
+        "user_id": user_id,
+        "created_at": datetime.now().isoformat(),
+        "questions": verified_questions,
+        "score": 0,
+        "total_questions": len(verified_questions),
+        "status": "active",
+        "weaknesses": [],
+        "is_diagnostic": True,
+    }
+    
+    db = load_quizzes()
+    db[quiz_id] = quiz_data
+    save_quizzes(db)
+
+    # Return to client
     client_questions = [
         {
             "id": idx,

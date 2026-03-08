@@ -319,3 +319,20 @@ export async function flagQuestion(
 
     return response.json();
 }
+
+/**
+ * Generate a diagnostic quiz across all active documents.
+ */
+export async function generateDiagnosticQuiz(): Promise<{ quiz_id: string; questions: any[] }> {
+    const userId = getUserId();
+    const response = await fetch(`${API_BASE_URL}/quiz/generate_diagnostic?user_id=${userId}`, {
+        method: 'POST'
+    });
+
+    if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || 'Diagnostic generation failed.');
+    }
+
+    return response.json();
+}
