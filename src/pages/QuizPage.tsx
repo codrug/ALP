@@ -166,7 +166,7 @@ export const QuizPage: React.FC<QuizPageProps> = ({ onStartQuiz }) => {
 
                     {/* Diagnostic Quiz */}
                     <div
-                        onClick={() => setSelectedMode('diagnostic')}
+                        onClick={() => onStartQuiz('diagnostic', 'diagnostic')}
                         className="group relative bg-[#111] border border-white/5 rounded-[3rem] p-12 cursor-pointer transition-all overflow-hidden hover:border-white/10"
                     >
                         <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/[0.02] blur-[80px] rounded-full -translate-y-1/2 translate-x-1/2" />

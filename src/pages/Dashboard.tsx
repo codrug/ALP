@@ -66,8 +66,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ setView, setQuizDocId, ite
             setView('upload');
         } else if (nextActionType === 'expand') {
             setView('upload');
+        } else if (nextActionType === 'diagnostic') {
+            setQuizDocId('diagnostic');
+            setView('quiz');
+        } else if (nextActionType === 'subject') {
+            // Find a relevant document for this subject if possible, or just go to quiz-page
+            const doc = documents.find(d => d.status === 'Active');
+            if (doc) {
+                setQuizDocId(doc.id);
+                setView('quiz');
+            } else {
+                setView('quiz-page');
+            }
         } else {
-            // diagnostic or subject → go to quiz page
             setView('quiz-page');
         }
     };
