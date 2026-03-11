@@ -10,40 +10,23 @@ from qdrant_client.http import models as qdrant_models
 
 logger = logging.getLogger("alp")
 
-# Gemini Client (Lazy Initialized)
-_gemini_client = None
+# Initialize Gemini Client
+api_key = os.getenv("GEMINI_API_KEY")
+client = None
 
-def get_gemini_client():
-    global _gemini_client
-    if _gemini_client is None:
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            logger.warning("GEMINI_API_KEY not found in environment.")
-            return None
-        try:
-            from google import genai
-            _gemini_client = genai.Client(api_key=api_key.strip())
-            logger.info("Gemini Client initialized successfully.")
-        except Exception as e:
-            logger.error(f"Failed to initialize Gemini Client: {e}")
-    return _gemini_client
+if not api_key:
+    logger.warning("GOOGLE_API_KEY not found. AI features will fail.")
+else:
+    client = genai.Client(api_key=api_key.strip())
 
-# FastEmbed model (Lazy Initialized)
-_embedding_model = None
-
-def get_embedding_model():
-    global _embedding_model
-    if _embedding_model is None:
-        try:
-            from fastembed import TextEmbedding
-            logger.info("Initializing FastEmbed local model (BAAI/bge-base-en-v1.5)...")
-            _embedding_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
-            logger.info("FastEmbed initialized.")
-        except ImportError:
-            logger.error("fastembed not installed. Run 'pip install fastembed'.")
-        except Exception as e:
-            logger.error(f"Failed to initialize FastEmbed: {e}")
-    return _embedding_model
+# Initialize FastEmbed model (Local CPU embeddings)
+# BAAI/bge-base-en-v1.5 produces 768-dimensional vectors
+try:
+    embedding_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
+    logger.info("FastEmbed local model initialized (768 dims).")
+except Exception as e:
+    logger.error(f"Failed to initialize FastEmbed: {e}")
+    embedding_model = None
 
 # Initialize Qdrant Client for RAG
 QDRANT_URL = os.getenv("QDRANT_URL", "")
@@ -58,19 +41,20 @@ if QDRANT_URL and QDRANT_API_KEY:
     except Exception as e:
         logger.error(f"Failed to initialize Qdrant in GeminiService: {e}")
 
-# Robust model fallback list based on available models for this key
+# Robust model fallback list
 MODELS_FALLBACK = [
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
     "gemini-1.5-flash",
     "gemini-1.5-flash-8b",
     "gemini-1.5-pro",
-    "gemini-1.5-flash-001",
-    "gemini-1.5-flash-002",
-    "gemini-1.5-pro-001",
-    "gemini-1.5-pro-002",
-    "gemini-pro"
+    "gemini-2.0-pro-exp-02-05", # Experimental Pro
+    "gemini-exp-1206",           # General experimental
+    "gemini-pro-latest"
 ]
+
+import time
+import random
 
 class GeminiService:
     @staticmethod
@@ -78,10 +62,9 @@ class GeminiService:
         """
         Generates MCQs using the new Google Gen AI SDK.
         """
-        model = get_gemini_client()
-        if not model:
-            logger.error("Gemini Service Unavailable. Providing Mock Quiz.")
-            return GeminiService.generate_mock_quiz(context_text)
+        if not client:
+            logger.error("Client not initialized. Check API Key.")
+            return []
 
         # We ask for a JSON array of questions
         prompt = f"""
@@ -109,134 +92,83 @@ class GeminiService:
 
         last_exception = None
         for model_id in MODELS_FALLBACK:
-            try:
-                logger.info(f"Attempting quiz generation with {model_id}...")
-                response = model.models.generate_content(
-                    model=model_id,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json"
-                    )
-                )
-
-                if not response or not response.text:
-                    continue
-                    
-                clean_text = response.text.strip()
-                
+            for attempt in range(2): # Retry each model once with a delay
                 try:
-                    return json.loads(clean_text)
-                except json.JSONDecodeError as je:
-                    if "```json" in clean_text:
-                        extracted = clean_text.split("```json")[-1].split("```")[0].strip()
-                        return json.loads(extracted)
+                    logger.info(f"Attempting quiz generation with {model_id} (Attempt {attempt+1})...")
+                    response = client.models.generate_content(
+                        model=model_id,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json"
+                        )
+                    )
+
+                    if not response or not response.text:
+                        continue
+                        
+                    clean_text = response.text.strip()
                     
-                    # Log Parse Failure as per PRD §13.2
+                    try:
+                        return json.loads(clean_text)
+                    except json.JSONDecodeError as je:
+                        if "```json" in clean_text:
+                            extracted = clean_text.split("```json")[-1].split("```")[0].strip()
+                            return json.loads(extracted)
+                        
+                        # Log Parse Failure as per PRD §13.2
+                        from services.error_logger import log_system_error
+                        log_system_error(
+                            error_type="parse_failure",
+                            model_used=model_id,
+                            prompt=prompt,
+                            offending_content=clean_text
+                        )
+                        raise je
+
+                except Exception as e:
+                    last_exception = e
+                    error_msg = str(e).upper()
+                    
+                    # Log General Generation Exception
                     from services.error_logger import log_system_error
                     log_system_error(
-                        error_type="parse_failure",
+                        error_type="generation_exception",
                         model_used=model_id,
                         prompt=prompt,
-                        offending_content=clean_text
+                        offending_content=str(e)
                     )
-                    raise je
 
-            except Exception as e:
-                last_exception = e
-                error_msg = str(e).upper()
-                
-                # Log General Generation Exception
-                from services.error_logger import log_system_error
-                log_system_error(
-                    error_type="generation_exception",
-                    model_used=model_id,
-                    prompt=prompt,
-                    offending_content=str(e)
-                )
-
-                if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg or "NOT_FOUND" in error_msg or "404" in error_msg:
-                    logger.warning(f"Model {model_id} failed with {e}. Trying fallback...")
-                    continue
-                else:
-                    logger.error(f"Gemini Quiz Generation Failed on {model_id}: {e}")
-                    continue
+                    if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
+                        if "PERDAY" in error_msg:
+                            logger.error(f"Daily quota exhausted for {model_id}. Trying next category...")
+                            break # Try next model immediately
+                        
+                        if attempt == 0:
+                            wait_time = 5 + random.uniform(1, 3)
+                            logger.warning(f"Rate limited (RPM) on {model_id}. Waiting {wait_time:.1f}s before retry...")
+                            time.sleep(wait_time)
+                            continue # Same model, retry
+                        else:
+                            logger.warning(f"Model {model_id} still rate limited after retry. Trying fallback...")
+                            break # Try next model
+                    
+                    if "NOT_FOUND" in error_msg or "404" in error_msg:
+                        logger.warning(f"Model {model_id} not available. Trying fallback...")
+                        break
+                    
+                    logger.error(f"Gemini Quiz Generation Exception on {model_id}: {e}")
+                    break # Non-quota error, move to next model
 
         logger.error(f"All Gemini models failed. Last error: {last_exception}")
-        
-        # FINAL FALLBACK: Mock Quiz (PRD §13.4 - Resilience)
-        # Provide a placeholder quiz so the user can see the UI and platform value
-        # regardless of specific API error (Quota, Auth, or Region)
-        logger.warning("Generation failed for all models. Providing Mock Quiz for testing.")
-        return GeminiService.generate_mock_quiz(context_text)
-
-    @staticmethod
-    def generate_mock_quiz(context_text: str) -> List[Dict]:
-        """
-        Provides a relevant placeholder quiz when AI generation fails.
-        Extracts keywords from context to make it feel related to the curriculum.
-        """
-        import re
-        from collections import Counter
-        
-        # Extract potential nouns/concepts (Capitalized words or long words)
-        concepts = re.findall(r'\b[A-Z][a-z]{3,}\b|\b[a-z]{7,}\b', context_text)
-        common_concepts = [c for c, count in Counter(concepts).most_common(5)]
-        
-        topic_str = "the provided curriculum"
-        if common_concepts:
-            topic_str = f"the curriculum (specifically {', '.join(common_concepts[:3])})"
-
-        return [
-            {
-                "question": f"Based on {topic_str}, which focus area is most critical for your current learning phase?",
-                "options": [
-                    "Core Fundamentals & Definitions",
-                    "Practical Application & Exercises",
-                    "Advanced Theoretical Integration",
-                    "Comprehensive Review & Summary"
-                ],
-                "correct_index": 0,
-                "explanation": f"This question samples from {topic_str}. Note: You are seeing this diagnostic quiz because the Gemini API quota is temporarily reached.",
-                "gap_type": "Foundation",
-                "concept": common_concepts[0] if common_concepts else "Core Curriculum"
-            },
-            {
-                "question": f"How should you apply the concepts from {topic_str} in a real-world scenario?",
-                "options": [
-                    "By memorizing all definitions",
-                    "By identifying and bridging specific knowledge gaps",
-                    "By ignoring complex sections",
-                    "By only focusing on familiar topics"
-                ],
-                "correct_index": 1,
-                "explanation": "Effective learning involves active gap identification as outlined in your study material.",
-                "gap_type": "Application",
-                "concept": common_concepts[1] if len(common_concepts) > 1 else "Strategy"
-            },
-            {
-                "question": f"Which element of {common_concepts[2] if len(common_concepts) > 2 else 'the material'} requires frequent retrieval practice?",
-                "options": [
-                    "Simple facts",
-                    "Complex relationships between concepts",
-                    "Formatting details",
-                    "File metadata"
-                ],
-                "correct_index": 1,
-                "explanation": "Mastery comes from understanding how different parts of the curriculum interact.",
-                "gap_type": "Foundation",
-                "concept": common_concepts[2] if len(common_concepts) > 2 else "Mastery"
-            }
-        ]
+        return []
 
     @staticmethod
     def generate_remediation(weak_concepts: List[str], gap_type: str, context: str) -> str:
         """
         Generates a targeted study guide using the new Google Gen AI SDK.
         """
-        model = get_gemini_client()
-        if not model:
-            logger.error("Gemini Service Unavailable for remediation. Providing Mock Remediation.")
-            return GeminiService.generate_mock_remediation(weak_concepts, gap_type, context)
+        if not client:
+            return "AI Service Unavailable."
 
         prompt = f"""
         The student has a '{gap_type}' gap in these concepts: {", ".join(weak_concepts)}.
@@ -250,64 +182,37 @@ class GeminiService:
         last_exception = None
         for model_id in MODELS_FALLBACK:
             try:
-                logger.info(f"Attempting remediation generation with {model_id}...")
-                response = model.models.generate_content(
+                response = client.models.generate_content(
                     model=model_id,
                     contents=prompt
                 )
-                if response and response.text:
-                    return response.text
-                continue
+                return response.text
             except Exception as e:
                 last_exception = e
                 error_msg = str(e).upper()
-                
-                # Log General Generation Exception
-                from services.error_logger import log_system_error
-                log_system_error(
-                    error_type="remediation_exception",
-                    model_used=model_id,
-                    prompt=prompt,
-                    offending_content=str(e)
-                )
-
-                if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg or "NOT_FOUND" in error_msg or "404" in error_msg:
-                    logger.warning(f"Model {model_id} failed with {e}. Trying fallback...")
+                if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
+                    if "PERDAY" in error_msg: break
+                    time.sleep(3)
                     continue
-                else:
-                    logger.error(f"Gemini Remediation Failed on {model_id}: {e}")
-                    continue
+                break # Non-quota error
         
         logger.error(f"All Gemini remediation models failed. Last error: {last_exception}")
-        return GeminiService.generate_mock_remediation(weak_concepts, gap_type, context)
-
-    @staticmethod
-    def generate_mock_remediation(weak_concepts: List[str], gap_type: str, context: str) -> str:
-        """
-        Provides a relevant placeholder study guide when AI generation fails.
-        """
-        topic = weak_concepts[0] if weak_concepts else "the identified gaps"
-        
-        return f"""Focus on bridging your {gap_type} gap regarding {topic}:
-
-• Core Principle: Review the fundamental definitions and structural relationships described in the source material for {topic}.
-• Practical Context: Application of these concepts requires understanding how they integrate with broader system workflows.
-• Targeted Review: Focus specifically on sections of the text that define {topic} and its primary functions to resolve common misconceptions."""
+        return "Unable to generate remediation at this time."
 
     @staticmethod
     def generate_embeddings(texts: List[str]) -> List[List[float]]:
         """
-        Generates embeddings locally using FastEmbed.
+        Generates embeddings locally using FastEmbed (BAAI/bge-base-en-v1.5).
+        Bypasses Gemini API limits and 404 errors.
         """
-        model = get_embedding_model()
-        if not model:
-            logger.error("Embedding model unavailable.")
+        if not embedding_model:
+            logger.error("FastEmbed model not initialized.")
             return [[0.0] * 768 for _ in texts]
 
         try:
             # zip results back into a list of floats
             # FastEmbed's embed returns a generator of numpy arrays
-            embeddings_generator = model.embed(texts)
+            embeddings_generator = embedding_model.embed(texts)
             return [emb.tolist() for emb in embeddings_generator]
         except Exception as e:
             logger.error(f"Local embedding generation failed: {e}")
@@ -364,8 +269,7 @@ class GeminiService:
         Uses a second Gemini call to cross-check generated Q&A against source text.
         Returns only verified questions.
         """
-        model = get_gemini_client()
-        if not model or not questions:
+        if not client or not questions:
             return questions  # Graceful fallback: skip verification if client unavailable
 
         # Build a compact payload for the verifier
@@ -396,62 +300,67 @@ QUESTIONS TO VERIFY:
 {json.dumps(qa_payload, indent=2)}
 """
         for model_id in MODELS_FALLBACK:
-            try:
-                response = model.models.generate_content(
-                    model=model_id,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json"
-                    )
-                )
-                if not response or not response.text:
-                    continue
-
-                verdicts = json.loads(response.text.strip())
-                if not isinstance(verdicts, list):
-                    continue
-
-                # Build a set of indices that passed verification
-                passed_indices = set()
-                for v in verdicts:
-                    if isinstance(v, dict) and v.get("verdict", "").upper() == "PASS":
-                        passed_indices.add(v.get("index"))
-
-                verified = []
-                for i, q in enumerate(questions):
-                    if i in passed_indices:
-                        verified.append(q)
-                    else:
-                        # Log the rejection for error learning (PRD §13)
-                        reason = "unknown"
-                        for v in verdicts:
-                            if isinstance(v, dict) and v.get("index") == i:
-                                reason = v.get("reason", "verifier_rejected")
-                                break
-                        from services.error_logger import log_system_error
-                        log_system_error(
-                            error_type="verifier_rejected",
-                            model_used=model_id,
-                            prompt="[Verifier LLM Check]",
-                            offending_content={
-                                "question": q.get("question"),
-                                "stated_correct": q["options"][q["correct_index"]],
-                                "reason": reason,
-                            }
+            for attempt in range(2):
+                try:
+                    response = client.models.generate_content(
+                        model=model_id,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json"
                         )
-                        logger.info(f"Verifier rejected Q{i}: {reason}")
+                    )
+                    if not response or not response.text:
+                        continue
 
-                # If ALL questions were rejected, fall back to returning them anyway
-                # (avoid empty quiz) but log a warning
-                if not verified:
-                    logger.warning("Verifier rejected ALL questions. Returning unverified set.")
-                    return questions
+                    verdicts = json.loads(response.text.strip())
+                    if not isinstance(verdicts, list):
+                        continue
 
-                return verified
+                    # Build a set of indices that passed verification
+                    passed_indices = set()
+                    for v in verdicts:
+                        if isinstance(v, dict) and v.get("verdict", "").upper() == "PASS":
+                            passed_indices.add(v.get("index"))
 
-            except Exception as e:
-                logger.warning(f"Verifier LLM call failed on {model_id}: {e}, skipping verification.")
-                continue
+                    verified = []
+                    for i, q in enumerate(questions):
+                        if i in passed_indices:
+                            verified.append(q)
+                        else:
+                            # Log the rejection for error learning (PRD §13)
+                            reason = "unknown"
+                            for v in verdicts:
+                                if isinstance(v, dict) and v.get("index") == i:
+                                    reason = v.get("reason", "verifier_rejected")
+                                    break
+                            from services.error_logger import log_system_error
+                            log_system_error(
+                                error_type="verifier_rejected",
+                                model_used=model_id,
+                                prompt="[Verifier LLM Check]",
+                                offending_content={
+                                    "question": q.get("question"),
+                                    "stated_correct": q["options"][q["correct_index"]],
+                                    "reason": reason,
+                                }
+                            )
+                            logger.info(f"Verifier rejected Q{i}: {reason}")
+
+                    # If ALL questions were rejected, fall back to returning them anyway
+                    # (avoid empty quiz) but log a warning
+                    if not verified:
+                        logger.warning("Verifier rejected ALL questions. Returning unverified set.")
+                        return questions
+
+                    return verified
+
+                except Exception as e:
+                    error_msg = str(e).upper()
+                    if ("RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg) and attempt == 0:
+                        time.sleep(2)
+                        continue
+                    logger.warning(f"Verifier LLM call failed on {model_id}: {e}, skipping verification.")
+                    break # Try next model
 
         # If all models fail, return original questions (graceful degradation)
         logger.warning("All verifier models failed. Returning unverified questions.")
@@ -462,15 +371,16 @@ QUESTIONS TO VERIFY:
     def retrieve_context(user_id: str, doc_id: str, query: str = "", limit: int = 5) -> str:
         """
         Retrieves relevant context chunks from Qdrant using vector search.
+        Falls back to empty string if Qdrant is unavailable.
         """
-        model = get_embedding_model()
-        if not qdrant_client or not model:
+        if not qdrant_client or not embedding_model:
             return ""
 
         try:
             # 1. Generate Query Vector
+            # Use 'query' (e.g. topic) if provided, else broad representative search
             search_query = query or "core concepts and important details"
-            query_vector = list(model.embed([search_query]))[0].tolist()
+            query_vector = list(embedding_model.embed([search_query]))[0].tolist()
 
             # 2. Build Filter
             must_selectors = [
