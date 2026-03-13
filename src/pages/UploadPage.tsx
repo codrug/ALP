@@ -9,7 +9,7 @@ import {
     Microscope,
     CheckCircle2,
     X,
-    ChevronRight,
+    ArrowLeft,
     Edit3,
     Info
 } from 'lucide-react';
@@ -294,8 +294,8 @@ const UploadPage: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
                                 onClick={handleComplete}
                                 className="flex-[2] bg-amber-500 hover:bg-amber-600 text-black py-6 rounded-[2rem] font-black text-xl transition-all shadow-2xl shadow-amber-500/20 flex items-center justify-center gap-4 group active:scale-95"
                             >
-                                Initialize Assessments
-                                <ChevronRight className="w-6 h-6 group-hover:translate-x-2 transition-transform" />
+                                <ArrowLeft className="w-6 h-6 group-hover:-translate-x-2 transition-transform" />
+                                Back to Curriculum
                             </button>
                         </div>
                     </div>

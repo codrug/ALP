@@ -19,14 +19,22 @@ if not api_key:
 else:
     client = genai.Client(api_key=api_key.strip())
 
-# Initialize FastEmbed model (Local CPU embeddings)
-# BAAI/bge-base-en-v1.5 produces 768-dimensional vectors
-try:
-    embedding_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
-    logger.info("FastEmbed local model initialized (768 dims).")
-except Exception as e:
-    logger.error(f"Failed to initialize FastEmbed: {e}")
-    embedding_model = None
+# Global embedding model (lazy-initialized)
+_embedding_model = None
+
+def get_embedding_model():
+    """Lazy-initializes the FastEmbed model to keep startup fast."""
+    global _embedding_model
+    if _embedding_model is None:
+        try:
+            from fastembed import TextEmbedding
+            # BAAI/bge-base-en-v1.5 produces 768-dimensional vectors
+            _embedding_model = TextEmbedding(model_name="BAAI/bge-base-en-v1.5")
+            logger.info("FastEmbed local model initialized (768 dims).")
+        except Exception as e:
+            logger.error(f"Failed to initialize FastEmbed: {e}")
+            _embedding_model = None
+    return _embedding_model
 
 # Initialize Qdrant Client for RAG
 QDRANT_URL = os.getenv("QDRANT_URL", "")
@@ -140,7 +148,7 @@ class GeminiService:
 
                     if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
                         if "PERDAY" in error_msg:
-                            logger.error(f"Daily quota exhausted for {model_id}. Trying next category...")
+                            logger.error(f"Daily quota exhausted for {model_id} (API Key: {api_key[:8]}...). Trying next model...")
                             break # Try next model immediately
                         
                         if attempt == 0:
@@ -159,7 +167,7 @@ class GeminiService:
                     logger.error(f"Gemini Quiz Generation Exception on {model_id}: {e}")
                     break # Non-quota error, move to next model
 
-        logger.error(f"All Gemini models failed. Last error: {last_exception}")
+        logger.error(f"All Gemini models failed. Root cause found: Your API key ({api_key[:8]}...) has likely hit its limit (429 Resource Exhausted / Quota). Please rotate your GEMINI_API_KEY in .env.")
         return []
 
     @staticmethod
@@ -205,14 +213,15 @@ class GeminiService:
         Generates embeddings locally using FastEmbed (BAAI/bge-base-en-v1.5).
         Bypasses Gemini API limits and 404 errors.
         """
-        if not embedding_model:
+        model = get_embedding_model()
+        if not model:
             logger.error("FastEmbed model not initialized.")
             return [[0.0] * 768 for _ in texts]
 
         try:
             # zip results back into a list of floats
             # FastEmbed's embed returns a generator of numpy arrays
-            embeddings_generator = embedding_model.embed(texts)
+            embeddings_generator = model.embed(texts)
             return [emb.tolist() for emb in embeddings_generator]
         except Exception as e:
             logger.error(f"Local embedding generation failed: {e}")

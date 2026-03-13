@@ -60,7 +60,7 @@ export default function App() {
 
   const handleUploadComplete = async () => {
     await refreshDocuments();
-    setView('dashboard');
+    setView('curriculum');
   };
 
   if (loading) {
