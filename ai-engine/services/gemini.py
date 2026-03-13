@@ -54,12 +54,20 @@ MODELS_FALLBACK = [
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
     "gemini-1.5-flash",
+    "gemini-1.5-flash-001",
+    "gemini-1.5-flash-002",
     "gemini-1.5-flash-8b",
     "gemini-1.5-pro",
+    "gemini-1.5-pro-001",
+    "gemini-1.5-pro-002",
     "gemini-2.0-pro-exp-02-05", # Experimental Pro
     "gemini-exp-1206",           # General experimental
     "gemini-pro-latest"
 ]
+
+# Model Blacklist (ID -> Expiry Timestamp)
+_model_blacklist = {}
+BLACKLIST_DURATION = 120 # 2 minutes
 
 import time
 import random
@@ -98,9 +106,19 @@ class GeminiService:
         "{context_text[:25000]}" 
         """
 
+        total_attempts = 0
         last_exception = None
         for model_id in MODELS_FALLBACK:
+            # ─── PRD §13.3 — Model Blacklist Check ────────────────
+            if model_id in _model_blacklist:
+                if time.time() < _model_blacklist[model_id]:
+                    logger.info(f"Skipping blacklisted model {model_id} (quota reset in progress)")
+                    continue
+                else:
+                    del _model_blacklist[model_id]
+
             for attempt in range(2): # Retry each model once with a delay
+                total_attempts += 1
                 try:
                     logger.info(f"Attempting quiz generation with {model_id} (Attempt {attempt+1})...")
                     response = client.models.generate_content(
@@ -117,11 +135,20 @@ class GeminiService:
                     clean_text = response.text.strip()
                     
                     try:
-                        return json.loads(clean_text)
+                        data = json.loads(clean_text)
+                        # Success! Record total attempts so verifier knows if it should fail-fast
+                        if isinstance(data, list):
+                            for q in data:
+                                q["_generation_attempts"] = total_attempts
+                        return data
                     except json.JSONDecodeError as je:
                         if "```json" in clean_text:
                             extracted = clean_text.split("```json")[-1].split("```")[0].strip()
-                            return json.loads(extracted)
+                            data = json.loads(extracted)
+                            if isinstance(data, list):
+                                for q in data:
+                                    q["_generation_attempts"] = total_attempts
+                            return data
                         
                         # Log Parse Failure as per PRD §13.2
                         from services.error_logger import log_system_error
@@ -147,12 +174,16 @@ class GeminiService:
                     )
 
                     if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
+                        # Blacklist this model for a while
+                        _model_blacklist[model_id] = time.time() + BLACKLIST_DURATION
+                        logger.warning(f"Model {model_id} exhausted. Blacklisting for {BLACKLIST_DURATION}s.")
+
                         if "PERDAY" in error_msg:
-                            logger.error(f"Daily quota exhausted for {model_id} (API Key: {api_key[:8]}...). Trying next model...")
+                            logger.error(f"Daily quota exhausted for {model_id}. Trying next model...")
                             break # Try next model immediately
                         
                         if attempt == 0:
-                            wait_time = 5 + random.uniform(1, 3)
+                            wait_time = 8 + random.uniform(2, 4)
                             logger.warning(f"Rate limited (RPM) on {model_id}. Waiting {wait_time:.1f}s before retry...")
                             time.sleep(wait_time)
                             continue # Same model, retry
@@ -189,6 +220,11 @@ class GeminiService:
         """
         last_exception = None
         for model_id in MODELS_FALLBACK:
+            # Check Blacklist
+            if model_id in _model_blacklist:
+                if time.time() < _model_blacklist[model_id]: continue
+                else: del _model_blacklist[model_id]
+
             try:
                 response = client.models.generate_content(
                     model=model_id,
@@ -199,8 +235,9 @@ class GeminiService:
                 last_exception = e
                 error_msg = str(e).upper()
                 if "RESOURCE_EXHAUSTED" in error_msg or "429" in error_msg:
+                    _model_blacklist[model_id] = time.time() + BLACKLIST_DURATION
                     if "PERDAY" in error_msg: break
-                    time.sleep(3)
+                    time.sleep(5)
                     continue
                 break # Non-quota error
         
@@ -279,7 +316,15 @@ class GeminiService:
         Returns only verified questions.
         """
         if not client or not questions:
-            return questions  # Graceful fallback: skip verification if client unavailable
+            return questions
+
+        # ─── PRD §13.4 — Fail-Fast Verifier ──────────────────
+        # If generation already took multiple attempts, quota is likely tight.
+        # Skip verifier to ensure we return *something* rather than 500.
+        attempts = questions[0].get("_generation_attempts", 1)
+        if attempts > 3:
+            logger.warning(f"Generation took {attempts} attempts. Skipping verifier to save quota.")
+            return questions
 
         # Build a compact payload for the verifier
         qa_payload = []

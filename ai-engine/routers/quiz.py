@@ -143,12 +143,11 @@ def generate_quiz(doc_id: str, chapter_id: str = None):
     # 3. Call Gemini Service
     questions = GeminiService.generate_quiz(context_text)
     
-    if not questions:
-        raise HTTPException(status_code=500, detail="AI failed to generate questions")
-
-    # [ROBUSTNESS] Validate that 'questions' is a list and has at least one valid question
-    if not isinstance(questions, list) or len(questions) == 0:
-        raise HTTPException(status_code=500, detail="AI returned empty or invalid question set")
+    if not questions or not isinstance(questions, list) or len(questions) == 0:
+        raise HTTPException(
+            status_code=500, 
+            detail="AI failed to generate questions after all fallback attempts. This usually means your GEMINI_API_KEY has hit its hard daily limit. Please update the key in your .env file or try again tomorrow."
+        )
 
     # ─── §12.1 Rule-based validation ───────────────────────────
     valid_questions, rejected_rules = GeminiService.rule_based_validate(questions)
