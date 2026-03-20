@@ -36,6 +36,11 @@ app = FastAPI()
 # Include the Quiz Router
 app.include_router(quiz.router)
 
+@app.get("/")
+def read_root():
+    return {"status": "ok", "message": "AI Engine (FastAPI) is running perfectly."}
+
+
 DATA_DIR = Path(current_dir) / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 DOC_DIR = DATA_DIR / "documents"
@@ -876,7 +881,7 @@ if __name__ == "__main__":
     
     try:
         print("Starting AI Engine on http://localhost:8000")
-        uvicorn.run(app, host="localhost", port=8000, log_level="info")
+        uvicorn.run("main:app", host="localhost", port=8000, log_level="info", reload=False)
     except Exception as e:
         print(f"FATAL STARTUP ERROR: {e}", file=sys.stderr)
         import traceback

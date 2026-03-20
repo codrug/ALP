@@ -38,3 +38,7 @@ cd ai-engine <br>
 - export VITE_FIREBASE_MEASUREMENT_ID="your_measurement_id"<br>
     
 - npm run dev
+
+## Collaborators
+
+- [Patibandla Satvika](https://github.com/PATIBANDLA-SATVIKA)

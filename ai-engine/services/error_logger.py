@@ -6,7 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-DATA_DIR = Path("data")
+# Resolve absolute path to 'data' directory relative to this file
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+AI_ENGINE_DIR = os.path.dirname(CURRENT_DIR)
+DATA_DIR = Path(AI_ENGINE_DIR) / "data"
 ERROR_LOG_FILE = DATA_DIR / "error_log.json"
 
 def get_prompt_hash(prompt: str) -> str:
