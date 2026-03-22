@@ -1,3 +1,4 @@
+<div align="center">
 <h1>ALP: Adaptive Learning Platform</h1>
 
 <p><strong>A sophisticated ecosystem for exam preparation featuring automated document parsing, semantic search, and personalized quiz generation.</strong></p>
@@ -143,35 +144,24 @@ ALP/
 
 Special thanks to the developers who have contributed to ALP:
 
-<div align="left">
+<div>
   <a href="https://github.com/Sumanth-kalla">
     <img src="https://github.com/Sumanth-kalla.png" width="100px;" alt="Sumanth-kalla"/>
   </a>
-</div>
-
-<div align="left">
   <a href="https://github.com/prasanna25325">
     <img src="https://github.com/prasanna25325.png" width="100px;" alt="prasanna25325"/>
   </a>
-</div>
-
-<div align="left">
   <a href="https://github.com/vendotha">
     <img src="https://github.com/vendotha.png" width="100px;" alt="vendotha"/>
   </a>
-</div>
-
-<div align="left">
   <a href="https://github.com/codrug">
     <img src="https://github.com/codrug.png" width="100px;" alt="codrug"/>
   </a>
-</div>
-
-<div align="left">
   <a href="https://github.com/satvikapatibandla2005-ai">
     <img src="https://github.com/satvikapatibandla2005-ai.png" width="100px;" alt="satvikapatibandla2005-ai"/>
   </a>
 </div>
+
 ---
 
 ## License
