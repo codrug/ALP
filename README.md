@@ -16,7 +16,7 @@
 
 ## Overview
 
-The **Master Learning Platform (ALP)** is an advanced tool designed to streamline the learning process for competitive exams (like GATE). It transforms passive study materials into active learning assets using Generative AI.
+The **Adaptive Learning Platform (ALP)** is an advanced tool designed to streamline the learning process for competitive exams (like GATE). It transforms passive study materials into active learning assets using Generative AI.
 
 ALP automatically parses your uploaded PDF, DOCX, and TXT notes, identifies core concepts, and indexes them into a vector database for semantic retrieval. It then generates personalized quizzes based on your specific study content, tracking your readiness and identifying areas of risk.
 
